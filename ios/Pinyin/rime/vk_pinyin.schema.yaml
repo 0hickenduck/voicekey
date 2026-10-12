@@ -1,7 +1,7 @@
 schema:
   schema_id: vk_pinyin
   name: 全拼
-  version: "1"
+  version: "2"
 engine:
   processors:
     - speller
@@ -30,46 +30,37 @@ speller:
     - derive/^([jqxy])u/$1v/
     - derive/^([nl])ue$/$1ve/
     - derive/^([jqxy])v/$1u/
-    - derive/([zcs])h(a|e|i|u|ai|ei|an|en|ou|uo|ua|un|ui|uan|uai|uang|ang|eng|ong)$/h$1$2/  # hzi → zhi
-    - derive/([zcs])h([aeiu])$/$1$2h/  # zih → zhi
-    - derive/^([wghk])ai$/$1ia/  # wia → wai
-    - derive/([wfghkz])ei$/$1ie/  # wie → wei
-    - derive/([jqx])ie$/$1ei/  # jei → jie
-    - derive/([rtypsdghklzcbnm])ao$/$1oa/
-    - derive/([ypfm])ou$/$1uo/
-    - derive/([wrtypsdfghklzcbnm])ang$/$1nag/
-    - derive/([wrtypsdfghklzcbnm])ang$/$1agn/
-    - derive/([wrtpsdfghklzcbnm])eng$/$1neg/
-    - derive/([wrtpsdfghklzcbnm])eng$/$1egn/
-    - derive/([qtypdjlxbnm])ing$/$1nig/
-    - derive/([qtypdjlxbnm])ing$/$1ign/
-    - derive/([rtysdghklzcn])ong$/$1nog/
-    - derive/([rtysdghklzcn])ong$/$1ogn/
-    - derive/([qtpdjlxbnm])iao$/$1ioa/
-    - derive/([qtpdjlxbnm])iao$/$1oia/
-    - derive/([rtsghkzc])ui$/$1iu/
-    - derive/([qjlxnm])iu$/$1ui/
-    - derive/([qjlxn])iang$/$1aing/
-    - derive/([qjlxn])iang$/$1inag/
-    - derive/([g|k|h|zh|sh])ua$/$1au/
-    - derive/([g|h|k|zh|ch|sh])uai$/$1aui/
-    - derive/([qrtysdghjklzxcn])uan$/$1aun/
-    - derive/([nlyjqx])ue$/$1eu/
-    - derive/([g|h|k|zh|ch|sh])uang$/$1aung/
-    - derive/([g|h|k|zh|ch|sh])uang$/$1uagn/
-    - derive/([g|h|k|zh|ch|sh])uang$/$1unag/
-    - derive/([g|h|k|zh|ch|sh])uang$/$1augn/
-    - derive/([jqx])iong$/$1inog/
-    - derive/([jqx])iong$/$1oing/
-    - derive/([jqx])iong$/$1iogn/
-    - derive/([jqx])iong$/$1oign/
-    - derive/([rtsdghkzc])o(u|ng)$/$1o/ # do → dou|dong
-    - derive/(.+)ong$/$1on/ # lon → long
-    - derive/([tl])eng$/$1en/ # ten → teng
-    - derive/([qwrtypsdfghjklzxcbnm])([aeio])ng$/$1ng/ # lng → lang、leng、ling、long
+    # 拼写纠错（correction 标签：降权 1%，与 enable_correction 的邻键替换互补）
+    # librime NearSearchCorrector 只支持单键替换；这里补齐它不支持的手滑模式：
+    # 转置（尾部两键敲反）
+    - derive/([bpmfdtljqxywr])ing$/$1ign/correction
+    - derive/([bpmfdtlngkhzhcsr])eng$/$1egn/correction
+    - derive/([bpmfdtljqx])iao$/$1ioa/correction
+    - derive/([bpmfdtljqx])iang$/$1iagn/correction
+    - derive/([mdtgkhzhcsr])ang$/$1agn/correction
+    - derive/([mdtgkhzhcsr])ang$/$1nag/correction
+    - derive/([bpmfdtljqx])ian$/$1ain/correction   # tain → tian（尾三键循环错位）
+    # 多敲 n/g（鼻音重复）
+    - derive/([bpmfdtljqxywr])ing$/$1inng/correction
+    - derive/([bpmfdtlngkhzhcsrw])eng$/$1enng/correction
+    - derive/([mdtgkhzhcsr])ang$/$1anng/correction
+    # 漏字母（n/g 漏敲）
+    - derive/([bpmfdtljqxywr])in$/$1ing/correction
+    - derive/([jqxl])ing$/$1ng/correction    # jng → jing（漏敲 i）
+    - derive/([bpmfdtlngkhzhcsr])en$/$1eng/correction
+    - derive/([mdtgkhzhcsrzcyw])an$/$1ang/correction
+    - derive/([mdtgkhzhcsrzcyw])ang$/$1an/correction
 translator:
   dictionary: vk
   enable_word_completion: true
   enable_user_dict: true
+  enable_correction: true # librime corrector：QWERTY 邻键 + 受限编辑距离（含转置），仅对无法精确切分的音节生效，固定降权
+  contextual_suggestions: true # 八股文语言模型参与候选排序
+  max_homophones: 7
+  max_homographs: 7
 menu:
   page_size: 20
+grammar:
+  language: zh-hans-t-essay-bgw # 八股文语言模型（简体词级 bigram）
+  collocation_max_length: 4
+  collocation_min_length: 3

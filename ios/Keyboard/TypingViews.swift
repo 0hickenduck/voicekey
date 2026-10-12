@@ -477,8 +477,8 @@ final class KeyPad: UIView {
         }
     }
 
-    /// 上滑多少算输入数字：小于半个键高，手指还没离开当前键就进入
-    private static let swipeUp: CGFloat = 18
+    /// 上滑多少算输入数字：超过大半个键高（触点到达键顶边附近），避免快打时手指上飘误触数字
+    private static let swipeUp: CGFloat = 26
     /// 按住多久后左右拖动算移光标，拖多远进入
     private static let cursorHold: TimeInterval = 0.3
     private static let cursorDrag: CGFloat = 6
@@ -576,6 +576,11 @@ final class KeyPad: UIView {
             let phase: UITouch.Phase = cancelled ? .cancelled : .ended
             if let touch = t.touch { t.wired ? onTrack?(t.button, t.key, phase, touch) : onCursor?(t.button, phase, touch) }
             return
+        }
+        // 松手复核：触点已经回到键内时撤销上滑（快打时手指瞬间飘过阈值又回落，moved 来不及复位）
+        if t.swiped, let touch = t.touch, t.button.superview === self {
+            let p = touch.location(in: self)
+            if t.button.frame.insetBy(dx: -4, dy: 6).contains(p) { t.swiped = false }
         }
         show(t, down: false)
         guard !cancelled else { return }

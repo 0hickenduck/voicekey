@@ -27,6 +27,18 @@ if [ "$(git -C "$SRC" rev-parse HEAD 2>/dev/null)" != "$LIBRIME_COMMIT" ]; then
     git -C "$SRC" submodule update -q --init --depth 1 deps/leveldb deps/marisa-trie deps/yaml-cpp deps/opencc
 fi
 
+# librime-octagram（八股文语言模型插件）→ 合并编译进 librime 静态库
+OCT=$SRC/plugins/octagram
+if [ ! -f "$OCT/src/octagram.cc" ]; then
+    git clone -q --depth 1 https://github.com/lotem/librime-octagram.git "$OCT"
+fi
+# octagram 依赖 utf8-cpp 与 darts-clone 头文件
+UTF8_INC=$CACHE/utfcpp-include
+mkdir -p "$UTF8_INC/utf8"
+cp -f /tmp/utfcpp-4.0.5/source/utf8.h "$UTF8_INC/"
+cp -f /tmp/utfcpp-4.0.5/source/utf8/*.h "$UTF8_INC/utf8/"
+DARTS_INC=$(dirname "$(find "$SRC/deps/opencc" -name darts.h | head -1)")
+
 # build <slice> <sysroot> <archs>
 build() {
     local prefix=$CACHE/out/$1 work=$CACHE/build/$1
@@ -47,7 +59,7 @@ build() {
     TARGET=libopencc dep opencc -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DBUILD_PYTHON=OFF -DUSE_SYSTEM_MARISA=ON -DSHARE_INSTALL_PREFIX=share -DCMAKE_CXX_FLAGS="-I$prefix/include"
     cmake --install "$work/opencc" --component Unspecified >/dev/null 2>&1 || true # 命令行工具装不上，库和头文件已装好
     [ -f "$prefix/lib/libopencc.a" ] && [ -f "$prefix/include/opencc/opencc.h" ]
-    configure "$SRC" "$work/rime" "${common[@]}" -DBoost_INCLUDE_DIR="$BOOST" -DBoost_NO_SYSTEM_PATHS=ON -DMarisa_LIBRARY="$prefix/lib/libmarisa.a" \
+    configure "$SRC" "$work/rime" "${common[@]}" -DBoost_INCLUDE_DIR="$BOOST" -DBoost_NO_SYSTEM_PATHS=ON -DMarisa_LIBRARY="$prefix/lib/libmarisa.a" -DCMAKE_CXX_FLAGS="-I$OCT/src -I$UTF8_INC -I$DARTS_INC" \
         -DBUILD_STATIC=ON -DBUILD_TEST=OFF -DENABLE_LOGGING=OFF -DBUILD_MERGED_PLUGINS=ON -DENABLE_TIMESTAMP=OFF
     cmake --build "$work/rime" --target rime-static >/dev/null
     libtool -static -no_warning_for_no_symbols -o "$prefix/librime.a" "$work/rime/lib/librime.a" \

@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 source versions.env
 CACHE=$PWD/.cache
 OUT=Sources/Pinyin/RimeData
-STAMP="librime $LIBRIME_VERSION ($LIBRIME_COMMIT) rime-ice $RIME_ICE_TAG $(cat rime/* | shasum -a 256 | cut -c1-16)"
+STAMP="librime $LIBRIME_VERSION ($LIBRIME_COMMIT) rime-ice $RIME_ICE_TAG $(cat rime/* | shasum -a 256 | cut -c1-16) $(shasum -a 256 .cache/zh-hans-t-essay-bgw.gram 2>/dev/null | cut -c1-16)"
 [ "$(cat "$OUT/VERSION" 2>/dev/null)" = "$STAMP" ] && exit 0
 mkdir -p "$CACHE"
 
@@ -44,6 +44,8 @@ rm -rf "$OUT" && mkdir -p "$OUT/build"
 for f in default.yaml vk_pinyin.schema.yaml vk_t9.schema.yaml vk_t9c.schema.yaml vk.table.bin vk.reverse.bin vk.prism.bin vk_t9.prism.bin vk_t9c.prism.bin; do
     cp "$WORK/build/$f" "$OUT/build/"
 done
+# 八股文语言模型（octagram 插件从 shared_data_dir 加载 <language>.gram）
+cp "$CACHE/zh-hans-t-essay-bgw.gram" "$OUT/"
 # 九宫格左侧拼音：8105 字表全部音节，按字频合计降序
 awk -F'\t' 'NF>=3 && $2 ~ /^[a-z]+$/ { w[$2] += $3 } END { for (s in w) print w[s] "\t" s }' "$WORK/cn_dicts/8105.dict.yaml" \
     | sort -k1,1nr -k2 | cut -f2 > "$OUT/syllables.txt"
