@@ -34,7 +34,8 @@
 
   async function report() {
     await tick();
-    if (root) call("pick_resize", { height: root.offsetHeight + 20 });
+    // 10px 上下边距，再留 8px 给缩放取整，避免滚动条把底边裁掉
+    if (root) call("pick_resize", { height: Math.ceil(root.getBoundingClientRect().height) + 28 });
   }
 
   onMount(() => {
@@ -104,7 +105,7 @@
 
 <style>
   .pick {
-    margin: 10px; width: 500px; border-radius: 14px; background: var(--pop); backdrop-filter: blur(36px) saturate(1.8);
+    margin: 10px; width: calc(100% - 20px); border-radius: 14px; background: var(--pop); backdrop-filter: blur(36px) saturate(1.8);
     -webkit-backdrop-filter: blur(36px) saturate(1.8); box-shadow: 0 2px 8px rgba(20, 20, 50, 0.12); border: 1px solid var(--line); overflow: hidden;
   }
   :global(.win) .pick { border-radius: 8px; }

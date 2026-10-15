@@ -62,6 +62,18 @@ fn set_pos<R: Runtime>(w: &WebviewWindow<R>, x: f64, y: f64) {
     };
 }
 
+/// macOS 逻辑点；Windows 用物理像素向上取整。否则 120% 缩放下 WebView 客户区比内容小一截
+fn set_client<R: Runtime>(w: &WebviewWindow<R>, a: &Area, logical_w: f64, logical_h: f64) {
+    let _ = if cfg!(target_os = "macos") {
+        w.set_size(LogicalSize::new(logical_w, logical_h))
+    } else {
+        w.set_size(tauri::PhysicalSize::new(
+            (logical_w * a.scale).ceil() as u32,
+            (logical_h * a.scale).ceil() as u32,
+        ))
+    };
+}
+
 fn cursor_area<R: Runtime>(app: &AppHandle<R>) -> Option<Area> {
     let p = app.cursor_position().ok();
     let m = p
@@ -132,6 +144,7 @@ pub fn hud<R: Runtime>(app: &AppHandle<R>, state: &str, text: &str, ch: Channel)
     if !w.is_visible().unwrap_or(false) {
         if let Some(a) = cursor_area(app) {
             let (ww, hh) = (units(&a, HUD_W), units(&a, HUD_H));
+            set_client(&w, &a, HUD_W, HUD_H);
             set_pos(&w, a.x + (a.w - ww) / 2.0, a.y + a.h - hh - units(&a, 24.0));
         }
         let _ = w.show();
@@ -186,7 +199,7 @@ fn place_pick<R: Runtime>(w: &WebviewWindow<R>, a: &Anchor) {
     };
     let x = x.clamp(ar.x + gap, (ar.x + ar.w - pw - gap).max(ar.x));
     let y = y.clamp(ar.y + gap, (ar.y + ar.h - ph - gap).max(ar.y));
-    let _ = w.set_size(LogicalSize::new(PICK_W, a.height));
+    set_client(w, ar, PICK_W, a.height);
     set_pos(w, x, y);
 }
 
