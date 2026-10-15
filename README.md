@@ -2,7 +2,7 @@
 
 <h1 align="center">VoiceKey</h1>
 
-<p align="center">macOS / Windows 语音输入：在任意输入框里按住或点按快捷键说话，识别结果直接打到光标处。</p>
+<p align="center">macOS、Windows、iOS、Android 语音输入。桌面端按住或点按快捷键说话；iOS 是带语音的中文键盘；Android 不替换输入法，识别结果写进当前输入框。</p>
 
 <p align="center">
   <img src="docs/screenshots/pick-live.png" width="420" alt="候选框：说话时各渠道实时出字">
@@ -11,6 +11,8 @@
 <p align="center"><sub>多渠道候选框：说话时各渠道实时出字（左），松开后逐条定稿并显示耗时，数字键或回车选一条上屏（右）</sub></p>
 
 ## 功能
+
+以下为 macOS / Windows。
 
 - **多个识别渠道**：豆包、微信、千问、百度、搜狗、讯飞输入法云端识别，以及完全本地运行的离线识别：微信离线（macOS / Windows）、豆包离线（仅 Apple 芯片 Mac）
 - **多渠道候选**：勾选 2 个以上渠道同时识别，光标旁弹出候选框实时显示各渠道结果，按数字键或 ↑↓ + 回车选一条上屏；默认选中上次用的渠道
@@ -30,9 +32,32 @@
 
 <p align="center"><img src="docs/screenshots/hud.png" width="420" alt="声波浮层"></p>
 
+## iOS
+
+iOS 17+ 的中文键盘（仅 iPhone）。默认 26 键全拼，可切九宫格；功能键和顶栏可以拖动调整。左上角麦克风说话。键盘本身不能录音，由主 App 在后台收音，再把文字送回键盘。
+
+- 云端渠道与桌面端相同，没有离线引擎
+- 勾选多个渠道时，在键盘里对比结果再选一条上屏
+- 默认画中画待机：不占麦克风，点麦克风才录音；画中画不可用时改为常开麦
+- 操作按钮或快捷指令「VoiceKey 说话」：正在使用本键盘时开始，再按一次结束
+- 点按说话的静音自动结束可在 1–5 秒间设置
+- 拼音词库来自[雾凇拼音](https://github.com/iDvel/rime-ice)（GPL-3.0），并补了搜狗流行词和部分 AI 词
+
+语音和与主 App 通信需要「允许完全访问」；不开也能本地打字。安装或更新后，已在跑的键盘进程不会换成新版本，需到「设置 › 通用 › 键盘 › 键盘 › VoiceKey」删除后再添加。
+
+## Android
+
+Android 8+（arm64）。不替换当前输入法：开启无障碍服务「VoiceKey 语音输入」后，在任意输入框长按音量下键，或点悬浮球说话，结果写入光标处。部分应用会隐藏控件树，Android 13 及以上改为经输入连接提交文字。
+
+- 渠道：豆包、微信、千问、百度、搜狗、讯飞，以及微信离线（约 100MB，本机推理）
+- 多渠道候选、边说边上屏、点按静音 1–5 秒自动结束
+- 长按音量下键只在输入框聚焦时生效，短按仍调音量
+
+国内系统清理后台会关掉无障碍。应用内有忽略电池优化、自启动和锁定最近任务的引导。
+
 ## 安装
 
-从 [Releases](https://github.com/J3n5en/voicekey/releases) 下载：
+从 [Releases](https://github.com/J3n5en/voicekey/releases) 下载桌面端安装包。iOS 与 Android 不在 Release 里，从源码构建。
 
 | 系统 | 文件 |
 |---|---|
@@ -82,6 +107,8 @@ npx tauri build --bundles app    # macOS：target/release/bundle/macos/VoiceKey.
 npx tauri build                  # Windows：nsis / msi 安装包
 ```
 
+- iOS（需要 Xcode 与 XcodeGen）：`ios/build.sh`，产物 `ios/build/VoiceKey.ipa`；`ios/build.sh --unsigned` 出未签名包
+- Android（需要 Android NDK 与 cargo-ndk）：先 `android/build-rust.sh`，再在 `android/` 执行 `./gradlew :app:assembleRelease`
 - Opus 由 `audiopus_sys` 从源码静态编译，相关环境变量见 `.cargo/config.toml`
 - 打包 DMG：`Scripts/dmg.sh out.dmg path/to/VoiceKey.app app/src-tauri/icons/icon.icns`
 - 命令行测试识别：`cargo run -p voicekey-core --bin vk-test -- doubao|wetype|qwen|baidu|sogou|iflytek file.wav`（WAV 需 16kHz 单声道）
@@ -107,8 +134,20 @@ git tag v1.0.1 && git push origin v1.0.1
 | `app/src-tauri` | Tauri 应用：设置、快捷键状态机、会话调度、浮层窗口、托盘、离线资源下载 |
 | `app/src` | Svelte 界面：设置、引导、声波浮层、候选框、渠道对比 |
 | `design/` | 交互原型与渠道图标 |
+| `ios/` | iOS 主 App 与键盘扩展。拼音输入、画中画待机，和键盘的协议见 `ios/PROTOCOL.md` |
+| `android/` | Android 无障碍语音输入。`build-rust.sh` 把识别引擎编成 `libvoicekey.so` |
 
 音频以 16kHz 单声道、20ms 一帧采集。识别设备身份在本机运行时生成，保存在 `~/Library/Application Support/VoiceKey/`（Windows 为 `%APPDATA%\VoiceKey\`）。
+
+## 链接
+
+- 安装包：[github.com/J3n5en/voicekey/releases](https://github.com/J3n5en/voicekey/releases/latest)
+- 更新频道：[t.me/EnsoAI_news](https://t.me/EnsoAI_news)
+- 讨论群组：[t.me/EnsoCode_Official](https://t.me/EnsoCode_Official)
+
+## 友链
+
+- [Linux.Do](https://linux.do/) — 与社区一起分享、讨论、关注开发进展。
 
 ## 声明
 
