@@ -106,7 +106,8 @@ fn frame(status: i32, audio: &[u8], first: bool) -> String {
 
 #[async_trait::async_trait]
 impl Engine for IflyEngine {
-    async fn run(&self, mut audio: Audio, partial: Partial) -> Result<String> {
+    async fn run(&self, audio: Audio, partial: Partial) -> Result<String> {
+        let mut audio = crate::audio::lead(audio);
         let mut ws = ws::connect(&auth_url()?, &[]).await?;
         let mut segs = BTreeMap::new();
         let mut text = String::new();

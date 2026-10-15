@@ -15,6 +15,8 @@ pub enum HotEvent {
     LongPress,
     Release,
     Tap,
+    /// 长按被取消，或短按没有变成点按
+    Cancel,
     Escape,
     Pick(Special),
     Recorded(Option<Shortcut>),
@@ -88,7 +90,7 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
                 }
             }
             if s.down_code.is_some() && !s.active {
-                cancel_pending(&mut s);
+                cancel_pending(&mut s, tx);
             }
             false
         }
@@ -104,7 +106,7 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
             let ours = e.code == s.down_code.unwrap_or(e.code) && (e.code == cfg.hold || Some(e.code) == tap_code);
             if !ours {
                 if s.down_code.is_some() && !s.active {
-                    cancel_pending(&mut s);
+                    cancel_pending(&mut s, tx);
                 }
                 return false;
             }
@@ -148,9 +150,12 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
                 s.tapped = true;
                 let _ = tx.send(HotEvent::Tap);
             } else if swallowed {
+                let _ = tx.send(HotEvent::Cancel);
                 // 普通短按：原样重放
                 pf::inject_key(e.code, true);
                 pf::inject_key(e.code, false);
+            } else {
+                let _ = tx.send(HotEvent::Cancel);
             }
             swallowed
         }
@@ -158,9 +163,10 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
 }
 
 /// 按住期间按了别的键：放弃本次长按/点按，并把吞掉的修饰键补发给系统以保留组合键
-fn cancel_pending(s: &mut State) {
+fn cancel_pending(s: &mut State, tx: &UnboundedSender<HotEvent>) {
     s.cancelled = true;
     s.gen += 1;
+    let _ = tx.send(HotEvent::Cancel);
     if std::mem::take(&mut s.held_swallowed) {
         if let Some(c) = s.down_code {
             pf::inject_key(c, true);

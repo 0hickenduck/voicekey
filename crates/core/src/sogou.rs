@@ -70,7 +70,8 @@ async fn post(client: &reqwest::Client, imei: &str, start: u64, seq: u64, blob: 
 
 #[async_trait::async_trait]
 impl Engine for SogouEngine {
-    async fn run(&self, mut audio: Audio, partial: Partial) -> Result<String> {
+    async fn run(&self, audio: Audio, partial: Partial) -> Result<String> {
+        let mut audio = crate::audio::lead(audio);
         let imei = Dev::load().imei;
         let start = now_ms();
         let client = reqwest::Client::builder().tcp_nodelay(true).build()?;

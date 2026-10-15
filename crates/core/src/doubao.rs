@@ -1,4 +1,5 @@
 use crate::pb::{self, PBuf};
+use crate::audio;
 use crate::util::{data_file, join_sentences, now_ms};
 use crate::ws::{self, AbortOnDrop};
 use crate::{opus, Audio, Engine, Partial};
@@ -12,7 +13,6 @@ use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
 
 const WS_URL: &str = "wss://frontier-audio-ime-ws.doubao.com/ocean/api/v1/ws";
-const UA: &str = "com.bytedance.android.doubaoime/100406010 (Linux; U; Android 16; en_US; Pixel 7 Pro; Build/BP2A.250605.031.A2; Cronet/TTNetVersion:94cf429a 2025-11-17 QuicVersion:1f89f732 2025-05-08)";
 const OK: i64 = 20_000_000;
 /// 官方客户端内置 ASR app key（1.4.6 IAsr.b()）；settings 下发的 app_key 已被部分设备拒绝（service discovery failure）
 const APP_KEY: &str = "OrnqKvSSrs";
@@ -167,12 +167,14 @@ impl<E: Into<anyhow::Error>> From<E> for Fail {
     }
 }
 
-async fn session(mut audio: Audio, partial: Arc<Partial>) -> std::result::Result<String, Fail> {
+async fn session(audio: Audio, partial: Arc<Partial>) -> std::result::Result<String, Fail> {
     {
+        let mut audio = audio::lead(audio);
         let device = DoubaoDevice::load().await?;
         let rid = uuid::Uuid::new_v4().to_string();
         let url = format!("{WS_URL}?aid=401734&device_id={}", device.did);
-        let ws = ws::connect(&url, &[("User-Agent", UA), ("proto-version", "v2"), ("x-custom-keepalive", "true")]).await?;
+        let ua = device.phone.ua();
+        let ws = ws::connect(&url, &[("User-Agent", &ua), ("proto-version", "v2"), ("x-custom-keepalive", "true")]).await?;
         let (mut tx, mut rx) = ws.split();
 
         let session = json!({
@@ -264,6 +266,9 @@ where
 #[derive(Serialize, Deserialize, Clone)]
 struct DoubaoDevice {
     did: String,
+    /// 注册时随机，随 did 固定；旧缓存缺省为原来的 Pixel 7 Pro
+    #[serde(default)]
+    phone: Phone,
 }
 
 const APP: &[(&str, &str)] = &[
@@ -272,12 +277,73 @@ const APP: &[(&str, &str)] = &[
     ("manifest_version_code", "100406010"), ("update_version_code", "100406010"),
     ("package", "com.bytedance.android.doubaoime"),
 ];
-const DEV: &[(&str, &str)] = &[
-    ("device_platform", "android"), ("os", "android"), ("os_api", "34"), ("os_version", "16"),
-    ("device_type", "Pixel 7 Pro"), ("device_brand", "google"), ("device_model", "Pixel 7 Pro"),
-    ("resolution", "1080*2400"), ("dpi", "420"), ("language", "zh"), ("timezone", "8"),
-    ("access", "wifi"), ("rom", "UP1A.231005.007"), ("rom_version", "UP1A.231005.007"),
+/// 真实机型：brand, model, Android 版本, API, build, resolution, dpi
+const PHONES: &[[&str; 7]] = &[
+    ["google", "Pixel 7 Pro", "16", "36", "BP2A.250605.031.A2", "1080*2340", "420"],
+    ["google", "Pixel 8", "15", "35", "AP4A.250205.002", "1080*2400", "420"],
+    ["google", "Pixel 9", "15", "35", "AP4A.250205.002", "1080*2424", "420"],
+    ["google", "Pixel 6", "14", "34", "AP2A.240805.005", "1080*2400", "420"],
+    ["samsung", "SM-S9210", "14", "34", "UP1A.231005.007", "1080*2340", "480"],
+    ["samsung", "SM-S9280", "14", "34", "UP1A.231005.007", "1080*2340", "450"],
+    ["samsung", "SM-S9180", "14", "34", "UP1A.231005.007", "1080*2316", "450"],
+    ["Xiaomi", "23127PN0CC", "14", "34", "UKQ1.230804.001", "1200*2670", "440"],
+    ["Xiaomi", "2211133C", "14", "34", "UKQ1.230804.001", "1080*2400", "440"],
+    ["Xiaomi", "24129PN74C", "15", "35", "AQ3A.240912.001", "1200*2670", "440"],
+    ["Redmi", "23090RA98C", "14", "34", "UKQ1.231003.002", "1220*2712", "440"],
+    ["Redmi", "23113RKC6C", "14", "34", "UKQ1.231003.002", "1440*3200", "560"],
+    ["vivo", "V2309A", "14", "34", "UP1A.231005.007", "1260*2800", "480"],
+    ["vivo", "V2324A", "14", "34", "UP1A.231005.007", "1260*2800", "480"],
+    ["OPPO", "PHZ110", "14", "34", "UKQ1.231108.001", "1264*2780", "480"],
+    ["OnePlus", "PJD110", "14", "34", "UKQ1.230924.001", "1440*3168", "560"],
+    ["OnePlus", "PJE110", "14", "34", "UKQ1.230924.001", "1264*2780", "480"],
 ];
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Phone {
+    brand: String,
+    model: String,
+    os: String,
+    api: String,
+    build: String,
+    resolution: String,
+    dpi: String,
+}
+
+impl Default for Phone {
+    fn default() -> Self {
+        Self::from(&PHONES[0])
+    }
+}
+
+impl Phone {
+    fn from(p: &[&str; 7]) -> Self {
+        let [brand, model, os, api, build, resolution, dpi] = p.map(String::from);
+        Self { brand, model, os, api, build, resolution, dpi }
+    }
+
+    fn random() -> Self {
+        Self::from(&PHONES[rand::random::<usize>() % PHONES.len()])
+    }
+
+    fn ua(&self) -> String {
+        format!(
+            "com.bytedance.android.doubaoime/100406010 (Linux; U; Android {}; en_US; {}; Build/{}; Cronet/TTNetVersion:94cf429a 2025-11-17 QuicVersion:1f89f732 2025-05-08)",
+            self.os, self.model, self.build
+        )
+    }
+
+    fn params(&self) -> Vec<(&'static str, String)> {
+        let mut v: Vec<(&str, String)> = APP.iter().map(|(k, v)| (*k, v.to_string())).collect();
+        v.extend([
+            ("device_platform", "android".into()), ("os", "android".into()), ("os_api", self.api.clone()),
+            ("os_version", self.os.clone()), ("device_type", self.model.clone()), ("device_brand", self.brand.clone()),
+            ("device_model", self.model.clone()), ("resolution", self.resolution.clone()), ("dpi", self.dpi.clone()),
+            ("language", "zh".into()), ("timezone", "8".into()), ("access", "wifi".into()),
+            ("rom", self.build.clone()), ("rom_version", self.build.clone()),
+        ]);
+        v
+    }
+}
 
 impl DoubaoDevice {
     fn file() -> std::path::PathBuf {
@@ -297,18 +363,16 @@ impl DoubaoDevice {
         let _ = std::fs::remove_file(Self::file());
     }
 
-    async fn post(url: &str, query: &[(&str, String)], body: Vec<u8>, ctype: &str, extra: &[(&str, &str)]) -> Result<Value> {
-        let mut req = reqwest::Client::new()
+    async fn post(url: &str, ua: &str, query: &[(&str, String)], body: Vec<u8>, ctype: &str) -> Result<Value> {
+        let resp = reqwest::Client::new()
             .post(url)
             .query(query)
             .timeout(Duration::from_secs(10))
-            .header("User-Agent", UA)
+            .header("User-Agent", ua)
             .header("Content-Type", ctype)
-            .body(body);
-        for (k, v) in extra {
-            req = req.header(*k, *v);
-        }
-        let resp = req.send().await?;
+            .body(body)
+            .send()
+            .await?;
         if resp.status() != 200 {
             bail!("豆包设备注册 HTTP 失败");
         }
@@ -316,10 +380,12 @@ impl DoubaoDevice {
     }
 
     async fn register() -> Result<Self> {
+        let phone = Phone::random();
         let cdid = uuid::Uuid::new_v4().to_string();
         let now = now_ms().to_string();
+        let mut q = phone.params();
         let mut header = serde_json::Map::new();
-        for (k, v) in APP.iter().chain(DEV) {
+        for (k, v) in &q {
             header.insert(k.to_string(), json!(v));
         }
         let extra = json!({
@@ -333,9 +399,8 @@ impl DoubaoDevice {
         header.extend(extra.as_object().unwrap().clone());
         let body = json!({"magic_tag": "ss_app_log", "header": header, "_gen_time": now.parse::<u64>()?});
 
-        let mut q: Vec<(&str, String)> = APP.iter().chain(DEV).map(|(k, v)| (*k, v.to_string())).collect();
         q.extend([("ssmix", "a".into()), ("_rticket", now.clone()), ("cdid", cdid.clone()), ("ac", "wifi".into())]);
-        let reg = Self::post("https://log-klink.zijieapi.com/service/2/device_register/", &q, serde_json::to_vec(&body)?, "application/json", &[]).await?;
+        let reg = Self::post("https://log-klink.zijieapi.com/service/2/device_register/", &phone.ua(), &q, serde_json::to_vec(&body)?, "application/json").await?;
         let did = reg["device_id_str"]
             .as_str()
             .map(String::from)
@@ -345,6 +410,6 @@ impl DoubaoDevice {
             bail!("豆包设备注册被拒绝");
         }
 
-        Ok(Self { did })
+        Ok(Self { did, phone })
     }
 }

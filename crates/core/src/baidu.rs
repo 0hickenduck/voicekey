@@ -146,7 +146,8 @@ impl Dev {
 
 #[async_trait::async_trait]
 impl Engine for BaiduEngine {
-    async fn run(&self, mut audio: Audio, partial: Partial) -> Result<String> {
+    async fn run(&self, audio: Audio, partial: Partial) -> Result<String> {
+        let mut audio = crate::audio::lead(audio);
         let sn = Uuid::new_v4().to_string();
         let cuid = Dev::load().cuid;
         let client = reqwest::Client::builder().tcp_nodelay(true).http1_only().build()?;

@@ -100,7 +100,8 @@ impl Engine for WeTypeEngine {
         }
     }
 
-    async fn run(&self, mut audio: Audio, partial: Partial) -> Result<String> {
+    async fn run(&self, audio: Audio, partial: Partial) -> Result<String> {
+        let mut audio = crate::audio::lead(audio);
         let (c, reused) = self.take().await?;
         let mut up = Upload {
             c, reused,

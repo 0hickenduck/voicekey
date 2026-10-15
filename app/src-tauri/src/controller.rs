@@ -3,9 +3,9 @@ use crate::hotkey::{HotEvent, Shared};
 use crate::settings::{Channel, Settings};
 use crate::{offline, ui, wtoffline, AppState};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -146,7 +146,22 @@ pub struct Ctl {
     front: Option<pf::FrontApp>,
     last_emit: Instant,
     flush_pending: bool,
+    /// 按下到判定长按之间已经打开的麦克风，确认开始后把这段音频交出去
+    primed: Option<Primed>,
 }
+
+/// 预开麦：先环形缓存，确认录音后转成实时帧流
+struct Primed {
+    recorder: Recorder,
+    gate: Arc<Mutex<Gate>>,
+}
+
+enum Gate {
+    Buffer(VecDeque<Vec<i16>>),
+    Forward(UnboundedSender<Vec<i16>>),
+}
+
+const PREROLL: usize = 50;
 
 pub fn spawn(app: AppHandle, qwen: Arc<QwenEngine>, rx: UnboundedReceiver<Msg>) {
     let st = app.state::<AppState>();
@@ -189,6 +204,7 @@ pub fn spawn(app: AppHandle, qwen: Arc<QwenEngine>, rx: UnboundedReceiver<Msg>) 
         front: None,
         last_emit: Instant::now(),
         flush_pending: false,
+        primed: None,
     };
     tauri::async_runtime::spawn(ctl.run(rx));
 }
@@ -277,10 +293,14 @@ impl Ctl {
     fn hot(&mut self, e: HotEvent) {
         match e {
             HotEvent::Press => {
-                if self.mode == Mode::Idle {
+                if !self.recording && self.mode == Mode::Idle {
                     self.prewarm();
+                    self.arm();
+                } else if !self.recording && matches!(self.mode, Mode::Single(_) | Mode::Pick) {
+                    self.arm();
                 }
             }
+            HotEvent::Cancel => self.disarm(),
             HotEvent::LongPress => match self.mode {
                 Mode::Single(_) | Mode::Pick => self.resume(false),
                 _ => self.begin(false),
@@ -332,6 +352,9 @@ impl Ctl {
 
     fn start_recorder(&mut self) -> Option<voicekey_core::Audio> {
         self.meter = None;
+        if let Some(audio) = self.take_primed() {
+            return Some(audio);
+        }
         let tx = self.tx.clone();
         let mic = self.settings().mic;
         match Recorder::start(Some(&mic), move |v| {
@@ -350,6 +373,75 @@ impl Ctl {
                 None
             }
         }
+    }
+
+    /// 快捷键按下即开麦。短按取消或被别的键打断时关掉
+    fn arm(&mut self) {
+        if self.primed.is_some() || self.recording {
+            return;
+        }
+        self.meter = None;
+        let tx = self.tx.clone();
+        let mic = self.settings().mic;
+        let Ok((recorder, mut audio)) = Recorder::start(Some(&mic), move |v| {
+            let _ = tx.send(Msg::Level(v));
+        }) else {
+            if self.mode == Mode::Idle {
+                self.refresh_meter();
+            }
+            return;
+        };
+        let gate = Arc::new(Mutex::new(Gate::Buffer(VecDeque::new())));
+        let shared = gate.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Some(frame) = audio.recv().await {
+                let mut gate = shared.lock().unwrap();
+                match &mut *gate {
+                    Gate::Buffer(q) => {
+                        q.push_back(frame);
+                        while q.len() > PREROLL {
+                            q.pop_front();
+                        }
+                    }
+                    Gate::Forward(tx) => {
+                        if tx.send(frame).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        self.primed = Some(Primed { recorder, gate });
+    }
+
+    fn disarm(&mut self) {
+        if self.recording {
+            return;
+        }
+        self.primed = None;
+        if self.mode == Mode::Idle {
+            self.refresh_meter();
+        }
+    }
+
+    fn take_primed(&mut self) -> Option<voicekey_core::Audio> {
+        let primed = self.primed.take()?;
+        let (tx, rx) = mpsc::unbounded_channel();
+        {
+            let mut gate = primed.gate.lock().unwrap();
+            if let Gate::Buffer(q) = &mut *gate {
+                for frame in q.drain(..) {
+                    let _ = tx.send(frame);
+                }
+            }
+            *gate = Gate::Forward(tx);
+        }
+        self.recorder = Some(primed.recorder);
+        self.recording = true;
+        self.heard_voice = false;
+        self.last_voice = Instant::now();
+        ui::set_tray_active(&self.app, true);
+        Some(rx)
     }
 
     fn stop_recording(&mut self) {

@@ -60,7 +60,8 @@ impl Engine for QwenEngine {
         }
     }
 
-    async fn run(&self, mut audio: Audio, partial: Partial) -> Result<String> {
+    async fn run(&self, audio: Audio, partial: Partial) -> Result<String> {
+        let mut audio = crate::audio::lead(audio);
         let (mut s, reused) = self.take(false).await?;
         if let Err(e) = s.ensure_attach().await {
             if !reused {
