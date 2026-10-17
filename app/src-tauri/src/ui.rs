@@ -188,8 +188,12 @@ fn caret_in_space<R: Runtime>(app: &AppHandle<R>, r: voicekey_platform::Rect) ->
 
 fn place_pick<R: Runtime>(w: &WebviewWindow<R>, a: &Anchor) {
     let ar = &a.area;
-    let (pw, ph) = (units(ar, PICK_W), units(ar, a.height));
     let gap = units(ar, 6.0);
+    let pw = units(ar, PICK_W);
+    // 高度先限制在工作区内。否则 ph 过大时 clamp 上界小于下界，Rust 直接 panic 闪退。
+    let requested = if a.height.is_finite() { units(ar, a.height) } else { units(ar, 160.0) };
+    let ph = cap_len(requested, ar.h, gap);
+    let logical_h = if cfg!(target_os = "macos") { ph } else { ph / ar.scale };
     let (x, y) = match a.caret {
         Some((cx, cy, _, chh)) => {
             let above = cy - ph - gap;
@@ -197,10 +201,19 @@ fn place_pick<R: Runtime>(w: &WebviewWindow<R>, a: &Anchor) {
         }
         None => (ar.x + (ar.w - pw) / 2.0, ar.y + ar.h - ph - units(ar, 120.0)),
     };
-    let x = x.clamp(ar.x + gap, (ar.x + ar.w - pw - gap).max(ar.x));
-    let y = y.clamp(ar.y + gap, (ar.y + ar.h - ph - gap).max(ar.y));
-    set_client(w, ar, PICK_W, a.height);
+    let x = clamp_axis(x, ar.x + gap, ar.x + ar.w - pw - gap);
+    let y = clamp_axis(y, ar.y + gap, ar.y + ar.h - ph - gap);
+    set_client(w, ar, PICK_W, logical_h);
     set_pos(w, x, y);
+}
+
+/// `f64::clamp` 在 min > max 时 panic。面板比屏幕还宽/高时上界可能小于下界。
+fn clamp_axis(v: f64, min: f64, max: f64) -> f64 {
+    v.clamp(min, max.max(min))
+}
+
+fn cap_len(requested: f64, area: f64, gap: f64) -> f64 {
+    requested.min((area - gap * 2.0).max(1.0)).max(1.0)
 }
 
 pub fn pick_show<R: Runtime>(app: &AppHandle<R>, caret: Option<voicekey_platform::Rect>, rows: usize, focus: bool) {
@@ -226,6 +239,9 @@ pub fn pick_show<R: Runtime>(app: &AppHandle<R>, caret: Option<voicekey_platform
 
 /// 前端按内容高度回报，保持底边贴着光标
 pub fn pick_resize<R: Runtime>(app: &AppHandle<R>, height: f64) {
+    if !height.is_finite() || height < 1.0 {
+        return;
+    }
     let Some(w) = app.get_webview_window("pick") else { return };
     let mut g = PICK_ANCHOR.lock().unwrap();
     if let Some(a) = g.as_mut() {
@@ -355,5 +371,31 @@ mod panel {
             let _: () = msg_send![o, setHidesOnDeactivate: Bool::NO];
             let _: () = msg_send![o, setHasShadow: Bool::NO];
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cap_len, clamp_axis};
+
+    #[test]
+    fn clamp_axis_when_panel_exceeds_work_area() {
+        // 旧代码上界只 max(ar.y)，下界是 ar.y + gap，面板超高时 min > max。
+        let ar_y = 25.0;
+        let gap = 6.0;
+        let min_y = ar_y + gap;
+        let max_y = ar_y;
+        assert!(min_y > max_y);
+        assert_eq!(clamp_axis(10.0, min_y, max_y), min_y);
+    }
+
+    #[test]
+    fn cap_len_keeps_panel_inside_work_area() {
+        let ar_y = 25.0;
+        let area = 800.0;
+        let gap = 6.0;
+        let ph = cap_len(1400.0, area, gap);
+        assert!(ar_y + area - ph - gap >= ar_y + gap);
+        assert!(ph + gap * 2.0 <= area + f64::EPSILON);
     }
 }
