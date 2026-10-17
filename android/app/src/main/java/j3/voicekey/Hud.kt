@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
@@ -69,7 +70,9 @@ class Hud(private val svc: VoiceService) {
             body.text = r.text.ifEmpty { if (s.recording) "请说话…" else "…" }
             list.removeAllViews()
         } else {
-            title.text = if (s.recording) "多渠道 · 聆听中，点一条结束并上屏" else "点一条上屏 · 音量下键上屏高亮 · 音量上键切换"
+            title.text = if (s.recording) "多渠道 · 聆听中，点一条结束并上屏" else App.prefs.let { p ->
+                "点一条上屏 · ${p.holdName}上屏高亮" + if (KeyEvent.KEYCODE_VOLUME_UP in p.holdKeys) "" else " · 音量上键切换"
+            }
             body.visibility = View.GONE
             rows(s)
         }

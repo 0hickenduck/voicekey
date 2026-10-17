@@ -66,13 +66,26 @@ impl Shortcut {
     }
 }
 
+/// 自定义长按组合：键码（修饰键区分左右）
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Combo {
+    pub codes: Vec<u32>,
+    pub name: String,
+}
+
+pub const CUSTOM_HOLD: &str = "custom";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub channel: Channel,
+    /// 预设键 id，或 CUSTOM_HOLD 表示使用 hold_combo
     pub hold_key: String,
+    pub hold_combo: Option<Combo>,
     pub tap_shortcut: Option<Shortcut>,
     pub silence: f64,
+    /// 点按模式静音后自动结束；关闭后只能再点一次结束
+    pub silence_stop: bool,
     pub streaming: bool,
     pub live_text: bool,
     pub mic: String,
@@ -91,8 +104,10 @@ impl Default for Settings {
         Self {
             channel: Channel::Doubao,
             hold_key: hold.into(),
+            hold_combo: None,
             tap_shortcut: Some(Shortcut { code: tap.0, mods: 0, name: tap.1.into() }),
             silence: 1.5,
+            silence_stop: true,
             streaming: true,
             live_text: true,
             mic: String::new(),
@@ -126,7 +141,8 @@ impl Settings {
         if !Channel::available().contains(&self.channel) {
             self.channel = Channel::Doubao;
         }
-        if !voicekey_platform::hold_keys().iter().any(|k| k.id == self.hold_key) {
+        let custom = self.hold_key == CUSTOM_HOLD && self.hold_combo.as_ref().is_some_and(|c| crate::hotkey::valid_hold(&c.codes));
+        if !custom && !voicekey_platform::hold_keys().iter().any(|k| k.id == self.hold_key) {
             self.hold_key = voicekey_platform::hold_keys()[0].id.into();
         }
         self.silence = self.silence.clamp(1.0, 5.0);
@@ -138,11 +154,17 @@ impl Settings {
         self.multi = multi;
     }
 
-    pub fn hold_code(&self) -> u32 {
-        voicekey_platform::hold_keys().iter().find(|k| k.id == self.hold_key).map_or(0, |k| k.code)
+    pub fn hold_codes(&self) -> Vec<u32> {
+        match &self.hold_combo {
+            Some(c) if self.hold_key == CUSTOM_HOLD => c.codes.clone(),
+            _ => voicekey_platform::hold_keys().iter().filter(|k| k.id == self.hold_key).map(|k| k.code).collect(),
+        }
     }
 
-    pub fn hold_name(&self) -> &'static str {
-        voicekey_platform::hold_keys().iter().find(|k| k.id == self.hold_key).map_or("", |k| k.name)
+    pub fn hold_name(&self) -> String {
+        match &self.hold_combo {
+            Some(c) if self.hold_key == CUSTOM_HOLD => c.name.clone(),
+            _ => voicekey_platform::hold_keys().iter().find(|k| k.id == self.hold_key).map_or("", |k| k.name).into(),
+        }
     }
 }

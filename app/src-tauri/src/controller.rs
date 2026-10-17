@@ -337,6 +337,15 @@ impl Ctl {
                     crate::update_settings(&self.app, |s| s.tap_shortcut = Some(sc));
                 }
             }
+            HotEvent::RecordedHold(c) => {
+                let _ = self.app.emit_to("main", "recorded", c.is_some());
+                if let Some(c) = c {
+                    crate::update_settings(&self.app, |s| {
+                        s.hold_key = crate::settings::CUSTOM_HOLD.into();
+                        s.hold_combo = Some(c);
+                    });
+                }
+            }
         }
     }
 
@@ -690,9 +699,9 @@ impl Ctl {
         }
     }
 
-    /// 说过话后静音超过设定时长即结束；一直没开口则 8 秒后放弃
+    /// 说过话后静音超过设定时长即结束；一直没开口则 8 秒后放弃。设置里关闭后只能手动结束
     fn check_silence(&mut self, level: f32) {
-        if !self.recording || !self.auto_stop {
+        if !self.recording || !self.auto_stop || !self.settings.read().unwrap().silence_stop {
             return;
         }
         if level > 0.3 {

@@ -101,7 +101,7 @@ class Session(private val svc: VoiceService) {
 
     private fun level(v: Float) {
         svc.onLevel(v)
-        if (!autoStop || !recording) return
+        if (!autoStop || !recording || !App.prefs.silenceStop) return
         val now = SystemClock.elapsedRealtime()
         if (v > 0.3f) {
             heard = true

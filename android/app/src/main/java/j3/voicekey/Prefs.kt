@@ -28,13 +28,25 @@ class Prefs(ctx: Context) {
         get() = sp.getFloat("silence", 1.5f).coerceIn(1f, 5f)
         set(v) = sp.edit().putFloat("silence", v).apply()
 
+    /** 关闭后点按说话只能再点一次结束 */
+    var silenceStop: Boolean
+        get() = sp.getBoolean("silenceStop", true)
+        set(v) = sp.edit().putBoolean("silenceStop", v).apply()
+
     var streaming: Boolean
         get() = sp.getBoolean("streaming", true)
         set(v) = sp.edit().putBoolean("streaming", v).apply()
 
+    /** 长按说话开关（沿用旧键名） */
     var volumeKey: Boolean
         get() = sp.getBoolean("volumeKey", true)
         set(v) = sp.edit().putBoolean("volumeKey", v).apply()
+
+    var holdKeys: List<Int>
+        get() = sp.getString("holdKeys", null)?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.isNotEmpty() } ?: Keys.DEFAULT
+        set(v) = sp.edit().putString("holdKeys", v.joinToString(",")).apply()
+
+    val holdName get() = Keys.name(holdKeys)
 
     var bubble: Boolean
         get() = sp.getBoolean("bubble", true)

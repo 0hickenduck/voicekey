@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { app, save, refreshPerms, refreshMics } from "../lib/store.svelte";
-  import { call } from "../lib/api";
+  import { call, holdName } from "../lib/api";
   import Logo from "../lib/Logo.svelte";
   import Perms from "./Perms.svelte";
   import Wave from "../lib/Wave.svelte";
@@ -11,7 +11,7 @@
   const steps = mac ? ["perm", "mic", "try"] : ["mic", "try"];
   let i = $state(0);
   const step = $derived(steps[i]);
-  const hold = $derived(app.info!.holdKeys.find((k) => k.id === app.s!.holdKey)?.name ?? "");
+  const hold = $derived(holdName(app.s!, app.info!.holdKeys));
   const tap = $derived(app.s!.tapShortcut?.name);
 
   onMount(() => {
@@ -61,7 +61,7 @@
     <h2>按住快捷键说一句</h2>
     <div class="sub">点一下下面的输入框，按住 <b>{hold}</b> 说「你好 VoiceKey」，松开即上屏。</div>
     <textarea class="try" placeholder="在这里试一试"></textarea>
-    {#if tap}<div class="tip">也可以点按 <b>{tap}</b>，停顿后自动结束</div>{/if}
+    {#if tap}<div class="tip">也可以点按 <b>{tap}</b>，{app.s!.silenceStop ? "停顿后自动结束" : "再点一次结束"}</div>{/if}
   {/if}
   <div class="nav">
     <button class="btn" style:visibility={i ? "visible" : "hidden"} onclick={() => i--}>上一步</button>

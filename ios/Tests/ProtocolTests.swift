@@ -82,6 +82,11 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(c.silenceSeconds, 5)
         let legacy = try JSONDecoder().decode(Config.self, from: JSONEncoder().encode(Config.initial))
         XCTAssertEqual(legacy.silenceSeconds, 1.5)
+        XCTAssertEqual(legacy.silenceStop, 1.5)
+        c.silenceAuto = false
+        c = try JSONDecoder().decode(Config.self, from: JSONEncoder().encode(c))
+        XCTAssertNil(c.silenceStop)
+        XCTAssertEqual(c.silenceSeconds, 5)
     }
 
     func testPipUpgradeAndModeSwitchPreserveSavedSettings() throws {
