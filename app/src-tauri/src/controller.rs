@@ -76,13 +76,15 @@ impl Segments {
         self.parts.len() - 1
     }
 
-    fn partial(&mut self, i: usize, text: String) -> bool {
+    /// None：该段已定稿，丢弃；Some(changed)：文字是否有变化
+    fn partial(&mut self, i: usize, text: String) -> Option<bool> {
         match self.parts.get_mut(i) {
             Some((t, false)) => {
+                let changed = *t != text;
                 *t = text;
-                true
+                Some(changed)
             }
-            _ => false,
+            _ => None,
         }
     }
 
@@ -593,8 +595,9 @@ impl Ctl {
     fn partial(&mut self, ch: Channel, seg: usize, text: String) {
         match self.mode {
             Mode::Single(_) => {
-                if !self.segs.partial(seg, text) {
-                    return;
+                let Some(changed) = self.segs.partial(seg, text) else { return };
+                if changed {
+                    self.speaking();
                 }
                 if let Some(t) = self.typer.as_mut() {
                     t.update(&self.segs.text());
@@ -603,8 +606,11 @@ impl Ctl {
             }
             Mode::Pick | Mode::Compare => {
                 if let Some(i) = self.rows.iter().position(|r| r.channel == ch) {
-                    if self.row_segs[i].partial(seg, text) {
+                    if let Some(changed) = self.row_segs[i].partial(seg, text) {
                         self.rows[i].text = self.row_segs[i].text();
+                        if changed {
+                            self.speaking();
+                        }
                     }
                 }
                 self.emit_rows();
@@ -705,13 +711,20 @@ impl Ctl {
             return;
         }
         if level > 0.3 {
-            self.heard_voice = true;
-            self.last_voice = Instant::now();
+            self.speaking();
         } else {
             let limit = if self.heard_voice { self.settings().silence } else { 8.0 };
             if self.last_voice.elapsed().as_secs_f64() > limit {
                 self.end();
             }
+        }
+    }
+
+    /// 音量够大或识别文字仍在变化都算在说话：说话声小、离麦远时音量常低于阈值，单看音量会中途误判静音
+    fn speaking(&mut self) {
+        if self.recording {
+            self.heard_voice = true;
+            self.last_voice = Instant::now();
         }
     }
 
@@ -884,15 +897,16 @@ mod tests {
     fn resumed_segments_join_in_order_and_wait_for_all() {
         let mut s = Segments::default();
         let a = s.start();
-        assert!(s.partial(a, "今天".into()));
+        assert_eq!(s.partial(a, "今天".into()), Some(true));
         let b = s.start();
-        assert!(s.partial(b, "天气".into()));
+        assert_eq!(s.partial(b, "天气".into()), Some(true));
+        assert_eq!(s.partial(b, "天气".into()), Some(false));
         s.done(b, Ok("天气不错。".into()), false);
         assert!(!s.finished());
         s.done(a, Ok("今天，".into()), false);
         assert!(s.finished());
         assert_eq!(s.text(), "今天，天气不错。");
-        assert!(!s.partial(a, "迟到".into()));
+        assert_eq!(s.partial(a, "迟到".into()), None);
     }
 
     #[test]

@@ -593,6 +593,12 @@ struct SilenceDetector {
         quiet += duration
         return quiet >= hold
     }
+
+    /// 识别文字仍在变化：视为在说话，避免声音小时被静音判定中途截断
+    mutating func voice() {
+        heard = true
+        quiet = 0
+    }
 }
 
 // MARK: - 闲置超时

@@ -606,6 +606,11 @@ final class SessionManager: ObservableObject {
         switch e {
         case .partial(let t):
             guard s.state == .listening || s.state == .finalizing else { return }
+            if s.state == .listening, s.text != t {
+                lock.lock()
+                detector?.voice()
+                lock.unlock()
+            }
             s.text = t
         case .final(let t):
             s.text = t

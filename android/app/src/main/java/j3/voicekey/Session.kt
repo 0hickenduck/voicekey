@@ -129,6 +129,11 @@ class Session(private val svc: VoiceService) {
         if (g != gen || row.state == State.Final || row.state == State.Error) return
         when (kind) {
             Native.PARTIAL -> {
+                // 识别文字仍在变化即视为在说话，避免声音小时被静音判定中途截断
+                if (recording && text != row.text) {
+                    heard = true
+                    lastVoice = SystemClock.elapsedRealtime()
+                }
                 row.text = text
                 if (typer?.update(text) == true) typed = true
             }
