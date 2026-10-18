@@ -37,6 +37,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("streaming", true)
         set(v) = sp.edit().putBoolean("streaming", v).apply()
 
+    /** 多渠道候选：点一条上屏并发送，长按只上屏 */
+    var pickSend: Boolean
+        get() = sp.getBoolean("pickSend", false)
+        set(v) = sp.edit().putBoolean("pickSend", v).apply()
+
     /** 长按说话开关（沿用旧键名） */
     var volumeKey: Boolean
         get() = sp.getBoolean("volumeKey", true)

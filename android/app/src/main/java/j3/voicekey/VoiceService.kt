@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.view.inputmethod.EditorInfo
 
 /** 不占用输入法：无障碍服务找到当前输入框写入文字，提供悬浮球与长按按键（默认音量下键，可自定义组合）触发 */
 class VoiceService : AccessibilityService() {
@@ -83,6 +84,45 @@ class VoiceService : AccessibilityService() {
         val im = inputMethod ?: return false
         if (!im.currentInputStarted) return false
         return im.currentInputConnection?.getSurroundingText(1, 1, 0)?.text?.isEmpty() == true
+    }
+
+    /** 上屏后发送：发送按钮常在有字后才出现，稍等重试；找不到再走输入框的发送动作或回车 */
+    fun send(node: AccessibilityNodeInfo?, tries: Int = 3) {
+        main.postDelayed({
+            when {
+                clickSend(node) -> {}
+                tries > 1 -> send(node, tries - 1)
+                !editorSend() -> hud.info("没找到发送按钮，已上屏")
+            }
+        }, 150L * (4 - tries))
+    }
+
+    private fun clickSend(node: AccessibilityNodeInfo?): Boolean {
+        val root = node?.window?.root ?: rootInActiveWindow ?: return false
+        val hit = SEND.firstNotNullOfOrNull { w ->
+            root.findAccessibilityNodeInfosByText(w).firstOrNull { n ->
+                n.isVisibleToUser && n.isEnabled && !n.isEditable &&
+                    listOf(n.text, n.contentDescription).any { it?.toString()?.trim().equals(w, ignoreCase = true) }
+            }
+        } ?: return false
+        var n: AccessibilityNodeInfo? = hit
+        while (n != null && !n.isClickable) n = n.parent
+        return n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+    }
+
+    private fun editorSend(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        val im = inputMethod ?: return false
+        if (!im.currentInputStarted) return false
+        val ic = im.currentInputConnection ?: return false
+        val action = (im.currentInputEditorInfo?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
+        if (action in ACTIONS) {
+            ic.performEditorAction(action)
+        } else {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        }
+        return true
     }
 
     fun refresh() {
@@ -168,6 +208,8 @@ class VoiceService : AccessibilityService() {
     companion object {
         var instance: VoiceService? = null
             private set
+        private val SEND = listOf("发送", "Send")
+        private val ACTIONS = setOf(EditorInfo.IME_ACTION_SEND, EditorInfo.IME_ACTION_GO, EditorInfo.IME_ACTION_SEARCH, EditorInfo.IME_ACTION_DONE)
 
         fun enabled(ctx: Context): Boolean {
             val list = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()

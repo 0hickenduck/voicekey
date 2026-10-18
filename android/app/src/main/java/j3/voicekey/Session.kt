@@ -28,6 +28,7 @@ class Session(private val svc: VoiceService) {
     private var releasedAt = 0L
     private var userPicked = false
     private var choosePending = false
+    private var chooseSend = false
 
     var rows: List<Row> = emptyList()
         private set
@@ -70,6 +71,7 @@ class Session(private val svc: VoiceService) {
         picking = rows.size > 1
         userPicked = false
         choosePending = false
+        chooseSend = false
         sel = 0
         if (picking) {
             rows.indexOfFirst { it.ch == App.prefs.lastPick }.takeIf { it >= 0 }?.let { sel = it; userPicked = true }
@@ -153,7 +155,7 @@ class Session(private val svc: VoiceService) {
         val cur = rows[sel].state
         if (row.state == State.Final && cur != State.Final && (!userPicked || cur == State.Error)) sel = rows.indexOf(row)
         if (choosePending && rows[sel].state == State.Error) rows.indexOfFirst { it.state == State.Final }.takeIf { it >= 0 }?.let { sel = it }
-        if (choosePending && rows[sel].state == State.Final) return choose(sel)
+        if (choosePending && rows[sel].state == State.Final) return choose(sel, chooseSend)
         if (rows.none { it.state == State.Listen || it.state == State.Wait }) choosePending = false
         svc.onSessionChanged()
     }
@@ -169,14 +171,15 @@ class Session(private val svc: VoiceService) {
         }
     }
 
-    /** 选一行上屏；还在识别的行先结束录音，定稿后自动上屏 */
-    fun choose(i: Int) {
+    /** 选一行上屏，send 时随后点发送；还在识别的行先结束录音，定稿后自动上屏 */
+    fun choose(i: Int, send: Boolean = false) {
         val r = rows.getOrNull(i) ?: return
         sel = i
         userPicked = true
         when (r.state) {
             State.Listen, State.Wait -> {
                 choosePending = true
+                chooseSend = send
                 end()
                 svc.onSessionChanged()
             }
@@ -184,7 +187,7 @@ class Session(private val svc: VoiceService) {
                 App.prefs.lastPick = r.ch
                 val node = target
                 close()
-                Inject.insert(svc, node, r.text)
+                if (Inject.insert(svc, node, r.text) && send) svc.send(node)
             }
             State.Error -> svc.onSessionChanged()
         }

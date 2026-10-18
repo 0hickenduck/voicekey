@@ -114,6 +114,7 @@ private fun Screen(tick: Int, refresh: () -> Unit) {
     var channel by remember { mutableStateOf(p.channel) }
     var multi by remember { mutableStateOf(p.multi.toSet()) }
     var streaming by remember { mutableStateOf(p.streaming) }
+    var pickSend by remember { mutableStateOf(p.pickSend) }
     var silence by remember { mutableFloatStateOf(p.silence) }
     var silenceStop by remember { mutableStateOf(p.silenceStop) }
     var volumeKey by remember { mutableStateOf(p.volumeKey) }
@@ -204,6 +205,10 @@ private fun Screen(tick: Int, refresh: () -> Unit) {
                         Checkbox(ch in multi, null)
                         Text(ch.title + if (ch.ready) "" else "（未下载，跳过）")
                     }
+                }
+                Toggle("点一条直接发送", if (pickSend) "点候选上屏并发送，长按候选只上屏、可继续编辑" else "点候选上屏；开启后点一条直接发送，长按上屏编辑", pickSend) {
+                    pickSend = it
+                    p.pickSend = it
                 }
             }
             Offline()
