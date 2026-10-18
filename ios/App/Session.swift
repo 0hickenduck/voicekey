@@ -453,7 +453,12 @@ final class SessionManager: ObservableObject {
         case .commit:
             if current, let u = utt, let r = u.rows.first(where: { $0.channel.id == c.channel }) {
                 record(u, r)
-                if u.rows.count > 1 { config.lastPick = r.channel.id }
+                if u.rows.count > 1 {
+                    var cfg = config
+                    cfg.lastPick = r.channel.id
+                    cfg.pickCounts = (cfg.pickCounts ?? [:]).merging([r.channel.id: 1], uniquingKeysWith: +)
+                    config = cfg
+                }
                 closeUtterance()
             }
         case .touch: break
@@ -474,7 +479,7 @@ final class SessionManager: ObservableObject {
         }
         if !active, !arm() { return fail(.noSession) }
         if interrupted, !tryResume() { return fail(.micBusy) }
-        let chans = config.resolve(c.channels)
+        let chans = config.byPicks(config.resolve(c.channels))
         guard !chans.isEmpty else { return fail(.noChannel) }
         if let e = heatUp() {
             fail(e)

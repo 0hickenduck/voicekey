@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use voicekey_core::util::data_file;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -93,6 +94,8 @@ pub struct Settings {
     pub multi: Vec<Channel>,
     /// 候选框上次选中的渠道，下次默认聚焦
     pub last_pick: Option<Channel>,
+    /// 候选框各渠道上屏次数，次数多的排前
+    pub pick_counts: HashMap<Channel, u32>,
     pub autostart: bool,
     pub theme: String,
     pub onboarded: bool,
@@ -113,6 +116,7 @@ impl Default for Settings {
             mic: String::new(),
             multi: Channel::engines().into_iter().filter(|&c| c != Channel::WetypeOffline).collect(),
             last_pick: None,
+            pick_counts: HashMap::new(),
             autostart: false,
             theme: "system".into(),
             onboarded: false,

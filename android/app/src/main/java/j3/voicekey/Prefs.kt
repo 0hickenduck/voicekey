@@ -23,6 +23,11 @@ class Prefs(ctx: Context) {
         get() = Channel.of(sp.getString("lastPick", null))
         set(v) = sp.edit().putString("lastPick", v?.id).apply()
 
+    /** 候选框各渠道上屏次数，次数多的排前 */
+    fun pickCount(ch: Channel) = sp.getInt("pickCount.${ch.id}", 0)
+
+    fun countPick(ch: Channel) = sp.edit().putInt("pickCount.${ch.id}", pickCount(ch) + 1).apply()
+
     /** 点按说话时静音多少秒自动结束 */
     var silence: Float
         get() = sp.getFloat("silence", 1.5f).coerceIn(1f, 5f)

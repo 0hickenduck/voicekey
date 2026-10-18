@@ -532,8 +532,12 @@ impl Ctl {
         ui::hud(&self.app, if self.recording { "listen" } else { "wait" }, &text, ch);
     }
 
-    fn begin_multi(&mut self, mode: Mode, channels: Vec<Channel>, auto_stop: bool) {
+    fn begin_multi(&mut self, mode: Mode, mut channels: Vec<Channel>, auto_stop: bool) {
         let Some(audio) = self.start_recorder() else { return };
+        if mode == Mode::Pick {
+            let n = self.settings().pick_counts;
+            channels.sort_by_key(|c| std::cmp::Reverse(n.get(c).copied().unwrap_or(0)));
+        }
         self.auto_stop = auto_stop;
         self.gen += 1;
         self.mode = mode;
@@ -848,9 +852,10 @@ impl Ctl {
         }
         let text = r.text.clone();
         let ch = r.channel;
-        if self.settings().last_pick != Some(ch) {
-            crate::update_settings(&self.app, |s| s.last_pick = Some(ch));
-        }
+        crate::update_settings(&self.app, |s| {
+            s.last_pick = Some(ch);
+            *s.pick_counts.entry(ch).or_default() += 1;
+        });
         let front = self.front.take();
         self.cancel();
         tauri::async_runtime::spawn(async move {

@@ -67,7 +67,7 @@ class Session(private val svc: VoiceService) {
         MicService.start(svc)
         val g = ++gen
         target = svc.focusedInput()
-        rows = ready.map { Row(it) }
+        rows = (if (ready.size > 1) ready.sortedByDescending { App.prefs.pickCount(it) } else ready).map { Row(it) }
         picking = rows.size > 1
         userPicked = false
         choosePending = false
@@ -185,6 +185,7 @@ class Session(private val svc: VoiceService) {
             }
             State.Final -> {
                 App.prefs.lastPick = r.ch
+                if (picking) App.prefs.countPick(r.ch)
                 val node = target
                 close()
                 if (Inject.insert(svc, node, r.text) && send) svc.send(node)

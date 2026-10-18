@@ -61,6 +61,8 @@ struct Config: Codable, Equatable {
     var idleMinutes: Int
     /// 多渠道候选默认选中上次上屏的渠道
     var lastPick: String?
+    /// 多渠道候选各渠道上屏次数，次数多的排前
+    var pickCounts: [String: Int]? = nil
     /// 待机方式；旧版配置没有此字段，按画中画
     var standby: Standby?
     /// 点麦克风说话时停顿多少秒自动结束；缺省 1.5
@@ -98,6 +100,15 @@ struct Config: Codable, Equatable {
     func resolve(_ ids: [String]?) -> [Channel] {
         guard let ids, !ids.isEmpty else { return active }
         return ids.compactMap { id in enabled.first { $0.id == id } }
+    }
+
+    /// 按上屏次数从多到少排，次数相同保持原顺序
+    func byPicks(_ chans: [Channel]) -> [Channel] {
+        let n = pickCounts ?? [:]
+        return chans.enumerated().sorted { a, b in
+            let x = n[a.element.id] ?? 0, y = n[b.element.id] ?? 0
+            return x != y ? x > y : a.offset < b.offset
+        }.map(\.element)
     }
 
     static func load() -> Config { Bus.read(Config.self, VK.File.config)?.migrated() ?? .initial }
