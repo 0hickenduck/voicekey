@@ -88,7 +88,7 @@ impl Segments {
         }
     }
 
-    /// keep_partial：流式上屏时已打出的片段在定稿为空或失败时保留
+    /// keep_partial：流式上屏时，定稿为空也保留已打出的片段。失败一律留下已显示的中间结果
     fn done(&mut self, i: usize, res: Result<String, String>, keep_partial: bool) {
         let Some((t, done)) = self.parts.get_mut(i) else { return };
         if *done {
@@ -102,12 +102,7 @@ impl Segments {
                     t.clear()
                 }
             }
-            Err(e) => {
-                if !keep_partial {
-                    t.clear()
-                }
-                self.error = Some(e);
-            }
+            Err(e) => self.error = Some(e),
         }
     }
 
@@ -652,7 +647,12 @@ impl Ctl {
                     if !streamed && !text.is_empty() {
                         pf::paste(&text);
                     }
-                    ui::hud_error(&self.app, &format!("识别失败：{e}"));
+                    let msg = if text.is_empty() {
+                        format!("识别失败：{e}")
+                    } else {
+                        format!("识别失败：{e}，已保留已识别的文字")
+                    };
+                    ui::hud_error(&self.app, &msg);
                 } else if streamed {
                     ui::hud_hide(&self.app, 0);
                 } else if text.is_empty() {
@@ -764,6 +764,12 @@ impl Ctl {
             return;
         }
         let mode = self.mode;
+        let streamed = self.typer.is_some();
+        let partial = match mode {
+            Mode::Single(_) => self.segs.text(),
+            Mode::Pick => self.rows.get(self.sel).map(|r| r.text.clone()).unwrap_or_default(),
+            Mode::Compare | Mode::Idle => String::new(),
+        };
         self.cancel();
         if mode == Mode::Pick {
             if let Some(f) = self.front.take() {
@@ -774,13 +780,28 @@ impl Ctl {
             for r in &mut self.rows {
                 if matches!(r.state, RowState::Listen | RowState::Wait) {
                     r.state = RowState::Error;
-                    r.text = message.clone().unwrap_or_else(|| "已取消".into());
+                    if r.text.is_empty() {
+                        r.text = message.clone().unwrap_or_else(|| "已取消".into());
+                    }
                 }
             }
             self.emit_rows();
             return;
         }
+        // 超时打断时，非流式还没写进输入框的中间结果补上；用户主动取消不补写
+        if message.is_some() && !streamed && !partial.is_empty() {
+            if mode == Mode::Pick {
+                let text = partial.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                    pf::paste(&text);
+                });
+            } else {
+                pf::paste(&partial);
+            }
+        }
         match message {
+            Some(m) if !partial.is_empty() => ui::hud_error(&self.app, &format!("{m}，已保留已识别的文字")),
             Some(m) => ui::hud_error(&self.app, &m),
             None => ui::hud_hide(&self.app, 0),
         }
@@ -915,15 +936,21 @@ mod tests {
     }
 
     #[test]
-    fn failed_segment_keeps_other_text_and_reports_error() {
+    fn failed_segment_keeps_partial_text_and_reports_error() {
         let mut s = Segments::default();
         let a = s.start();
         let b = s.start();
         s.partial(b, "半句".into());
         s.done(a, Ok("第一句".into()), false);
         s.done(b, Err("网络".into()), false);
-        assert_eq!(s.text(), "第一句");
+        assert_eq!(s.text(), "第一句半句");
         assert_eq!(s.error.as_deref(), Some("网络"));
+
+        let mut timed_out = Segments::default();
+        let d = timed_out.start();
+        timed_out.partial(d, "已经打出来的字".into());
+        timed_out.done(d, Err("识别超时".into()), false);
+        assert_eq!(timed_out.text(), "已经打出来的字");
 
         let mut streamed = Segments::default();
         let c = streamed.start();

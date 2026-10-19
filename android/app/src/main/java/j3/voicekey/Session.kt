@@ -141,13 +141,23 @@ class Session(private val svc: VoiceService) {
                 if (typer?.update(text) == true) typed = true
             }
             Native.FINAL -> {
-                row.text = text.ifEmpty { "没有识别到内容" }
-                row.state = if (text.isEmpty()) State.Error else State.Final
+                if (text.isNotEmpty()) row.text = text
+                if (row.text.isEmpty()) {
+                    row.text = "没有识别到内容"
+                    row.state = State.Error
+                } else {
+                    row.state = State.Final
+                }
                 row.ms = if (recording) 0 else SystemClock.elapsedRealtime() - releasedAt
             }
             else -> {
-                row.text = text
-                row.state = State.Error
+                if (row.text.isEmpty()) {
+                    row.text = text
+                    row.state = State.Error
+                } else {
+                    row.state = State.Final
+                    row.ms = if (recording) 0 else SystemClock.elapsedRealtime() - releasedAt
+                }
             }
         }
         if (kind == Native.PARTIAL) return svc.onSessionChanged()
@@ -206,8 +216,18 @@ class Session(private val svc: VoiceService) {
     }
 
     fun abort(message: String?) {
+        val row = if (picking) rows.getOrNull(sel) else rows.firstOrNull()
+        val keep = if (message != null && row != null && row.state != State.Error) row.text.takeIf { it.isNotEmpty() } else null
+        val t = typer
+        val node = target
+        val already = typed
         close()
-        message?.let(svc.hud::error)
+        if (keep != null) {
+            if (t?.update(keep) != true && !already) Inject.insert(svc, node, keep)
+            svc.hud.info("$message，已保留已识别的文字")
+        } else {
+            message?.let(svc.hud::error)
+        }
     }
 
     private fun close() {

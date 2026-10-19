@@ -618,17 +618,23 @@ final class SessionManager: ObservableObject {
             }
             s.text = t
         case .final(let t):
-            s.text = t
+            if !t.isEmpty { s.text = t }
             s.state = .final
             s.doneAt = VK.now
             u.rows[r].cores[seg] = nil
-            Bus.log("final #\(id) \(u.rows[r].channel.id)/\(seg): \(t)")
+            Bus.log("final #\(id) \(u.rows[r].channel.id)/\(seg): \(s.text)")
         case .failure(let m):
-            s.state = .error
-            s.error = Self.friendly(m)
             s.doneAt = VK.now
             u.rows[r].cores[seg] = nil
-            Bus.log("error #\(id) \(u.rows[r].channel.id)/\(seg): \(m)")
+            if s.text.isEmpty {
+                s.state = .error
+                s.error = Self.friendly(m)
+                Bus.log("error #\(id) \(u.rows[r].channel.id)/\(seg): \(m)")
+            } else {
+                // 字已经显示出来了，超时或断线不能再把整句回删掉
+                s.state = .final
+                Bus.log("keep #\(id) \(u.rows[r].channel.id)/\(seg) after \(m): \(s.text)")
+            }
         }
         u.rows[r].segs[seg] = s
         settle(u)
