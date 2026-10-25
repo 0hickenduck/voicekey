@@ -31,7 +31,6 @@ struct Area {
 
 #[derive(Clone, Copy)]
 struct Anchor {
-    caret: Option<(f64, f64, f64, f64)>,
     area: Area,
     height: f64,
 }
@@ -194,13 +193,9 @@ fn place_pick<R: Runtime>(w: &WebviewWindow<R>, a: &Anchor) {
     let requested = if a.height.is_finite() { units(ar, a.height) } else { units(ar, 160.0) };
     let ph = cap_len(requested, ar.h, gap);
     let logical_h = if cfg!(target_os = "macos") { ph } else { ph / ar.scale };
-    let (x, y) = match a.caret {
-        Some((cx, cy, _, chh)) => {
-            let above = cy - ph - gap;
-            (cx - units(ar, 40.0), if above >= ar.y { above } else { cy + chh + gap })
-        }
-        None => (ar.x + (ar.w - pw) / 2.0, ar.y + ar.h - ph - units(ar, 120.0)),
-    };
+    // 固定在屏幕正中下方（与胶囊 HUD 底边对齐），不跟随光标跳动；内容变多时向上长、底边不动。
+    // 光标位置只用来决定放在哪块屏幕（caret_in_space 已选好 area）。
+    let (x, y) = (ar.x + (ar.w - pw) / 2.0, ar.y + ar.h - ph - units(ar, 32.0));
     let x = clamp_axis(x, ar.x + gap, ar.x + ar.w - pw - gap);
     let y = clamp_axis(y, ar.y + gap, ar.y + ar.h - ph - gap);
     set_client(w, ar, PICK_W, logical_h);
@@ -218,14 +213,11 @@ fn cap_len(requested: f64, area: f64, gap: f64) -> f64 {
 
 pub fn pick_show<R: Runtime>(app: &AppHandle<R>, caret: Option<voicekey_platform::Rect>, rows: usize, focus: bool) {
     let Some(w) = app.get_webview_window("pick") else { return };
-    let (caret, area) = match caret.and_then(|r| caret_in_space(app, r)) {
-        Some((c, a)) => (Some(c), a),
-        None => match cursor_area(app) {
-            Some(a) => (None, a),
-            None => return,
-        },
+    // 光标所在的屏幕；拿不到光标时用鼠标所在的屏幕
+    let Some(area) = caret.and_then(|r| caret_in_space(app, r)).map(|(_, a)| a).or_else(|| cursor_area(app)) else {
+        return;
     };
-    let a = Anchor { caret, area, height: 20.0 + rows as f64 * 32.0 };
+    let a = Anchor { area, height: 20.0 + rows as f64 * 32.0 };
     *PICK_ANCHOR.lock().unwrap() = Some(a);
     place_pick(&w, &a);
     #[cfg(target_os = "macos")]
