@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod controller;
+mod history;
 mod hotkey;
 mod offline;
 mod settings;
@@ -210,6 +211,12 @@ fn open_url(url: String) {
 }
 
 #[tauri::command]
+fn history_list(query: Option<String>) -> serde_json::Value {
+    let dir = voicekey_core::util::data_dir();
+    json!({ "dir": dir.to_string_lossy(), "entries": history::list(query.as_deref().unwrap_or(""), 500) })
+}
+
+#[tauri::command]
 fn update_check(app: AppHandle) {
     update::check(&app, true);
 }
@@ -232,7 +239,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_state, set_settings, perm_status, perm_action, microphones, record_shortcut,
             pick_choose, pick_key, pick_resize, compare_toggle, meter, open_url, model_download,
-            update_check, update_install
+            update_check, update_install, history_list
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]

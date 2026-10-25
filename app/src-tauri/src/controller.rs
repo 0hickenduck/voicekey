@@ -1,7 +1,7 @@
 //! 会话编排：快捷键 → 录音 → 识别 → 上屏；「全部」模式流式候选面板；设置页渠道对比
 use crate::hotkey::{HotEvent, Shared};
 use crate::settings::{Channel, Settings};
-use crate::{offline, ui, wtoffline, AppState};
+use crate::{history, offline, ui, wtoffline, AppState};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::Ordering;
@@ -636,6 +636,7 @@ impl Ctl {
                 let typer = self.typer.take();
                 let error = self.segs.error.take();
                 let streamed = typer.is_some();
+                self.remember(ch, &text, Vec::new());
                 if let Some(mut t) = typer {
                     // 定稿可能与流式结果不同（数字/标点整理），按差异修正；之后到达的迟到片段丢弃
                     if !text.is_empty() {
@@ -770,6 +771,15 @@ impl Ctl {
             Mode::Pick => self.rows.get(self.sel).map(|r| r.text.clone()).unwrap_or_default(),
             Mode::Compare | Mode::Idle => String::new(),
         };
+        // 留在输入框里的文字：流式已打出的，或超时补写的
+        let kept = match mode {
+            Mode::Single(ch) if streamed || message.is_some() => Some(ch),
+            Mode::Pick if message.is_some() => self.rows.get(self.sel).map(|r| r.channel),
+            _ => None,
+        };
+        if let Some(ch) = kept {
+            self.remember(ch, &partial, Vec::new());
+        }
         self.cancel();
         if mode == Mode::Pick {
             if let Some(f) = self.front.take() {
@@ -873,6 +883,13 @@ impl Ctl {
         }
         let text = r.text.clone();
         let ch = r.channel;
+        let alts = self
+            .rows
+            .iter()
+            .filter(|o| o.channel != ch && o.state == RowState::Final)
+            .map(|o| history::Alt { channel: o.channel, text: o.text.clone() })
+            .collect();
+        self.remember(ch, &text, alts);
         crate::update_settings(&self.app, |s| {
             s.last_pick = Some(ch);
             *s.pick_counts.entry(ch).or_default() += 1;
@@ -886,6 +903,17 @@ impl Ctl {
             tokio::time::sleep(Duration::from_millis(80)).await;
             pf::paste(&text);
         });
+    }
+
+    /// 上屏的文字写入识别历史（设置里可关）
+    fn remember(&self, ch: Channel, text: &str, alts: Vec<history::Alt>) {
+        if text.is_empty() || !self.settings.read().unwrap().history {
+            return;
+        }
+        let e = history::Entry::new(ch, text, alts);
+        if history::append(&e).is_ok() {
+            let _ = self.app.emit("history", &e);
+        }
     }
 
     /// 最多每 33ms 推送一次，避免文字跳动

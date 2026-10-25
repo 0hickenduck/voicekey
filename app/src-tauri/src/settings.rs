@@ -96,6 +96,8 @@ pub struct Settings {
     pub last_pick: Option<Channel>,
     /// 候选框各渠道上屏次数，次数多的排前
     pub pick_counts: HashMap<Channel, u32>,
+    /// 上屏的定稿写入数据目录的 history.jsonl
+    pub history: bool,
     pub autostart: bool,
     pub theme: String,
     pub onboarded: bool,
@@ -117,6 +119,7 @@ impl Default for Settings {
             multi: Channel::engines().into_iter().filter(|&c| c != Channel::WetypeOffline).collect(),
             last_pick: None,
             pick_counts: HashMap::new(),
+            history: true,
             autostart: false,
             theme: "system".into(),
             onboarded: false,
