@@ -14,7 +14,7 @@ const TRAY: &[u8] = include_bytes!("../icons/tray.png");
 const TRAY_ACTIVE: &[u8] = include_bytes!("../icons/tray-active.png");
 const HUD_W: f64 = 680.0;
 const HUD_H: f64 = 120.0;
-const PICK_W: f64 = 520.0;
+const PICK_W: f64 = 400.0;
 
 static HUD_TOKEN: AtomicU64 = AtomicU64::new(0);
 /// 候选面板锚点（统一坐标空间：macOS 逻辑点 / Windows 物理像素）
@@ -225,7 +225,7 @@ pub fn pick_show<R: Runtime>(app: &AppHandle<R>, caret: Option<voicekey_platform
             None => return,
         },
     };
-    let a = Anchor { caret, area, height: 92.0 + rows as f64 * 48.0 };
+    let a = Anchor { caret, area, height: 20.0 + rows as f64 * 32.0 };
     *PICK_ANCHOR.lock().unwrap() = Some(a);
     place_pick(&w, &a);
     #[cfg(target_os = "macos")]

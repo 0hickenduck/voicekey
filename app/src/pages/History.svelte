@@ -71,7 +71,7 @@
         <ChIcon ch={e.channel} size="xs" />
         <span class="lbl">
           <span class="txt">{e.text}</span>
-          <small>{fmt(e.ts)} · {CH[e.channel]?.short ?? e.channel}{e.lang ? ` · ${LANG[e.lang]}` : ""}{e.alts?.length ? ` · 另有 ${e.alts.length} 条候选` : ""}</small>
+          <small>{fmt(e.ts)} · {CH[e.channel]?.short ?? e.channel}{e.mix ? ` · ${e.mix.split("+").map((l) => (LANG as Record<string, string>)[l] ?? l).join("+")}` : e.lang ? ` · ${LANG[e.lang]}` : ""}{e.alts?.length ? ` · 另有 ${e.alts.length} 条候选` : ""}</small>
         </span>
         <span class="hint" class:ok={copied === i}>{copied === i ? "已复制" : "复制"}</span>
       </button>

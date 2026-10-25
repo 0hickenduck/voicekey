@@ -18,15 +18,20 @@ pub struct Entry {
     pub ts: u64,
     pub text: String,
     pub channel: Channel,
-    /// zh / ja / en，按字符粗略判断；判断不出为空
+    /// zh / ja / en，按字符粗略判断的主要语言；判断不出为空
     pub lang: String,
+    /// 混说时各语言按占比排列，如 "en+zh"；单一语言时省略
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mix: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alts: Vec<Alt>,
 }
 
 impl Entry {
     pub fn new(channel: Channel, text: &str, alts: Vec<Alt>) -> Self {
-        Self { ts: now_ms(), text: text.into(), channel, lang: lang(text).into(), alts }
+        let langs = langs(text);
+        let mix = if langs.len() > 1 { langs.join("+") } else { String::new() };
+        Self { ts: now_ms(), text: text.into(), channel, lang: langs.first().copied().unwrap_or("").into(), mix, alts }
     }
 }
 
@@ -55,8 +60,14 @@ pub fn list(query: &str, limit: usize) -> Vec<Entry> {
     v
 }
 
-/// 有假名（占中日文字一成以上）为 ja；汉字不少于英文单词数为 zh；只有拉丁字母为 en
+/// 主要语言：zh / ja / en，判断不出为空
 pub fn lang(text: &str) -> &'static str {
+    langs(text).first().copied().unwrap_or("")
+}
+
+/// 句中出现的语言，按占比从高到低；占比不足 15% 的忽略。
+/// 粗略折算成“词”：英文按单词，中文约 1.5 字一词，日文（有假名时汉字也算日文）约 2 字一词。
+pub fn langs(text: &str) -> Vec<&'static str> {
     let (mut kana, mut han, mut words, mut in_word) = (0usize, 0usize, 0usize, false);
     for c in text.chars() {
         let latin = c.is_ascii_alphabetic();
@@ -70,15 +81,19 @@ pub fn lang(text: &str) -> &'static str {
             _ => {}
         }
     }
-    if kana > 0 && kana * 10 >= kana + han {
-        "ja"
-    } else if han > 0 && han >= words {
-        "zh"
-    } else if words > 0 {
-        "en"
-    } else {
-        ""
+    let japanese = kana > 0 && kana * 10 >= kana + han;
+    let (ja, zh) = if japanese { ((kana + han) as f64 / 2.0, 0.0) } else { (0.0, han as f64 / 1.5) };
+    let en = words as f64;
+    let total = ja + zh + en;
+    if total == 0.0 {
+        return Vec::new();
     }
+    let mut v: Vec<(&'static str, f64)> = [("zh", zh), ("ja", ja), ("en", en)]
+        .into_iter()
+        .filter(|&(_, n)| n > 0.0 && n / total >= 0.15)
+        .collect();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1));
+    v.into_iter().map(|(l, _)| l).collect()
 }
 
 #[cfg(test)]
@@ -94,6 +109,16 @@ mod tests {
         assert_eq!(lang("Actually, I think it works."), "en");
         assert_eq!(lang("Let's use 豆包 for this one"), "en");
         assert_eq!(lang("123，。"), "");
+    }
+
+    #[test]
+    fn detects_mixed_speech() {
+        assert_eq!(langs("Let's use 豆包 for this one"), vec!["en", "zh"]);
+        assert_eq!(langs("这个 deadline 太赶了"), vec!["zh", "en"]);
+        assert_eq!(langs("明日の meeting は online でお願いします"), vec!["ja", "en"]);
+        assert_eq!(langs("Actually, I think it works."), vec!["en"]);
+        assert_eq!(Entry::new(Channel::Doubao, "今天天气不错。", Vec::new()).mix, "");
+        assert_eq!(Entry::new(Channel::Doubao, "这个 deadline 太赶了", Vec::new()).mix, "zh+en");
     }
 
     #[test]
