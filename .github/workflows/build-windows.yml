@@ -1,0 +1,47 @@
+name: Build Windows (history fork)
+
+# Unsigned Windows build of this fork, without updater artifacts (the upstream signing key is not available here).
+on:
+  push:
+    branches: [history]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-pc-windows-msvc
+
+      - name: Test history module
+        working-directory: app/src-tauri
+        run: cargo test --target x86_64-pc-windows-msvc history
+
+      - name: Build
+        working-directory: app
+        run: |
+          npm ci
+          npx tauri build --target x86_64-pc-windows-msvc --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoiceKey-history-windows
+          path: |
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
