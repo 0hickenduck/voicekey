@@ -26,6 +26,8 @@ pub enum HotEvent {
     RecordedPaste(Option<Shortcut>),
     /// 粘贴快捷键：等修饰键全部松开后发出，避免和模拟的 Ctrl+V 叠成别的组合
     PasteLast,
+    /// 鼠标中键点按
+    MouseTap,
 }
 
 #[derive(Default)]
@@ -35,6 +37,7 @@ pub struct Config {
     pub chord: Option<Chord>,
     pub tap: Option<Shortcut>,
     pub paste: Option<Shortcut>,
+    pub middle: bool,
 }
 
 /// 长按组合：若干修饰键（区分左右）+ 至多一个普通键
@@ -112,6 +115,24 @@ struct State {
 pub fn start(shared: Arc<Shared>, tx: UnboundedSender<HotEvent>) {
     let state = Arc::new(Mutex::new(State::default()));
     pf::start_hook(Box::new(move |e| handle(&shared, &state, &tx, e)));
+}
+
+pub fn start_mouse(shared: Arc<Shared>, tx: UnboundedSender<HotEvent>) {
+    let mut swallowed = false;
+    pf::start_middle_hook(Box::new(move |down| middle(&shared, &tx, &mut swallowed, down)));
+}
+
+/// 中键按下发出点按并吞掉；对应的松开也吞掉。关闭、暂停、录制快捷键时原样放行
+fn middle(sh: &Shared, tx: &UnboundedSender<HotEvent>, swallowed: &mut bool, down: bool) -> bool {
+    if !down {
+        return std::mem::take(swallowed);
+    }
+    if !sh.config.read().unwrap().middle || sh.paused.load(Ordering::Relaxed) || sh.recording.load(Ordering::Relaxed) {
+        return false;
+    }
+    *swallowed = true;
+    let _ = tx.send(HotEvent::MouseTap);
+    true
 }
 
 fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e: &KeyEvent) -> bool {
@@ -451,6 +472,23 @@ mod tests {
         assert!(matches!(rx.try_recv(), Ok(HotEvent::LongPress)));
         step(ev(KeyKind::Modifier(false), alt, cflag));
         assert!(matches!(rx.try_recv(), Ok(HotEvent::Release)));
+    }
+
+    #[test]
+    fn middle_click_taps_only_when_enabled() {
+        let sh = Shared::default();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut sw = false;
+        assert!(!middle(&sh, &tx, &mut sw, true));
+        assert!(!middle(&sh, &tx, &mut sw, false));
+        assert!(rx.try_recv().is_err());
+        sh.config.write().unwrap().middle = true;
+        assert!(middle(&sh, &tx, &mut sw, true));
+        assert!(matches!(rx.try_recv(), Ok(HotEvent::MouseTap)));
+        assert!(middle(&sh, &tx, &mut sw, false));
+        sh.paused.store(true, Ordering::Relaxed);
+        assert!(!middle(&sh, &tx, &mut sw, true));
+        assert!(!middle(&sh, &tx, &mut sw, false));
     }
 
     #[test]

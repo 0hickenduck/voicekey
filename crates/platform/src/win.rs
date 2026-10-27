@@ -1,4 +1,5 @@
-use crate::{HookFn, KeyEvent, KeyKind, MicStatus, Rect, ALT, CTRL, META, SHIFT};
+use crate::{HookFn, KeyEvent, MiddleFn, KeyKind, MicStatus, Rect, ALT, CTRL, META, SHIFT};
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use windows::core::Interface;
@@ -16,7 +17,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetGUIThreadInfo, GetMessageW, GetWindowThreadProcessId,
     SetForegroundWindow, SetWindowsHookExW, TranslateMessage, GUITHREADINFO, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
-    WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_SYSKEYDOWN,
 };
 
 /// 自己注入的事件打标记（dwExtraInfo），钩子里跳过
@@ -79,6 +80,57 @@ pub fn start_hook(f: HookFn) {
             DispatchMessageW(&msg);
         }
     });
+}
+
+static MIDDLE: Mutex<Option<MiddleFn>> = Mutex::new(None);
+/// 最近一次左键按下那一刻的前台窗口（本进程的窗口不记）
+static CLICK_FRONT: AtomicIsize = AtomicIsize::new(0);
+
+unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    // flags 第 0 位 = LLMHF_INJECTED，模拟出来的点击不管
+    if code == HC_ACTION as i32 && (*(lparam.0 as *const MSLLHOOKSTRUCT)).flags & 1 == 0 {
+        match wparam.0 as u32 {
+            WM_LBUTTONDOWN => {
+                let fg = GetForegroundWindow();
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(fg, Some(&mut pid as *mut u32));
+                if !fg.is_invalid() && pid != std::process::id() {
+                    CLICK_FRONT.store(fg.0 as isize, Ordering::Relaxed);
+                }
+            }
+            msg @ (WM_MBUTTONDOWN | WM_MBUTTONUP) => {
+                if let Some(f) = MIDDLE.lock().unwrap().as_mut() {
+                    if f(msg == WM_MBUTTONDOWN) {
+                        return LRESULT(1);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+/// 鼠标钩子：中键交给回调，左键只记录点击前的前台窗口
+pub fn start_middle_hook(f: MiddleFn) {
+    *MIDDLE.lock().unwrap() = Some(f);
+    std::thread::spawn(|| unsafe {
+        let module = GetModuleHandleW(None).ok();
+        if SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module.map(Into::into), 0).is_err() {
+            return;
+        }
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    });
+}
+
+/// 用户最近一次左键点击时所在的窗口：点候选框之前点进去的那个
+pub fn clicked_front() -> Option<FrontApp> {
+    let h = CLICK_FRONT.load(Ordering::Relaxed);
+    (h != 0).then_some(FrontApp(h))
 }
 
 fn key_input(vk: u16, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {

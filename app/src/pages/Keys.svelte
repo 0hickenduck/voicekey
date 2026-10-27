@@ -63,6 +63,13 @@
     </div>
   </div>
 {/if}
+<h3>鼠标</h3>
+<div class="group">
+  <div class="row">
+    <div class="lbl">中键说话<small>点一下开始，再点一下结束。结果留在候选框：先点要输入的位置，再点候选；右键候选框取消。开启后其他程序收不到中键</small></div>
+    <button class="sw" class:on={s.middleClick} onclick={() => save({ middleClick: !s.middleClick })} aria-label="中键说话"></button>
+  </div>
+</div>
 <h3>再次粘贴</h3>
 <div class="group">
   <div class="row">

@@ -141,6 +141,8 @@ pub struct Ctl {
     choose_pending: bool,
     released_at: Option<Instant>,
     front: Option<pf::FrontApp>,
+    /// 本次会话由鼠标中键开始：不接管键盘，上屏到点候选前最后点过的窗口
+    mouse: bool,
     last_emit: Instant,
     flush_pending: bool,
     /// 按下到判定长按之间已经打开的麦克风，确认开始后把这段音频交出去
@@ -199,6 +201,7 @@ pub fn spawn(app: AppHandle, qwen: Arc<QwenEngine>, rx: UnboundedReceiver<Msg>) 
         choose_pending: false,
         released_at: None,
         front: None,
+        mouse: false,
         last_emit: Instant::now(),
         flush_pending: false,
         primed: None,
@@ -288,6 +291,7 @@ impl Ctl {
     }
 
     fn hot(&mut self, e: HotEvent) {
+        let mouse = matches!(e, HotEvent::MouseTap);
         match e {
             HotEvent::Press => {
                 if !self.recording && self.mode == Mode::Idle {
@@ -307,7 +311,7 @@ impl Ctl {
                     self.end()
                 }
             }
-            HotEvent::Tap => {
+            HotEvent::Tap | HotEvent::MouseTap => {
                 if self.mode == Mode::Compare {
                     return;
                 }
@@ -317,6 +321,8 @@ impl Ctl {
                     self.resume(true)
                 } else if self.mode != Mode::Idle {
                     self.abort(None)
+                } else if mouse {
+                    self.begin_mouse()
                 } else {
                     self.begin(true)
                 }
@@ -494,6 +500,7 @@ impl Ctl {
             return;
         }
         let s = self.settings();
+        self.mouse = false;
         if s.channel == Channel::All {
             return self.begin_multi(Mode::Pick, s.multi, auto_stop);
         }
@@ -506,6 +513,17 @@ impl Ctl {
         let seg = self.segs.start();
         ui::hud(&self.app, "listen", "", s.channel);
         self.spawn_engine(s.channel, seg, audio);
+    }
+
+    /// 鼠标中键开始：单渠道也走候选框，结果等用户点好位置再点候选上屏
+    fn begin_mouse(&mut self) {
+        if self.mode != Mode::Idle {
+            return;
+        }
+        let s = self.settings();
+        self.mouse = true;
+        let channels = if s.channel == Channel::All { s.multi } else { vec![s.channel] };
+        self.begin_multi(Mode::Pick, channels, true);
     }
 
     /// 识别中或候选框未关时再触发：新开一段录音，结果接在前面几段后面
@@ -582,7 +600,8 @@ impl Ctl {
                 self.user_picked = true;
             }
             self.front = pf::front_app();
-            self.hk.picking.store(true, Ordering::Relaxed);
+            // 鼠标会话的面板可能一直开着，不吞方向键/数字/回车，免得别处打字失灵
+            self.hk.picking.store(!self.mouse, Ordering::Relaxed);
             // 安全输入下钩子收不到方向键/数字：改为让面板取得焦点自己接收按键
             ui::pick_show(&self.app, pf::caret(), self.rows.len(), pf::secure_input());
         }
@@ -796,7 +815,7 @@ impl Ctl {
         }
         self.cancel();
         if mode == Mode::Pick {
-            if let Some(f) = self.front.take() {
+            if let Some(f) = self.front.take().filter(|_| !self.mouse) {
                 f.activate();
             }
         }
@@ -813,7 +832,8 @@ impl Ctl {
             return;
         }
         // 超时打断时，非流式还没写进输入框的中间结果补上；用户主动取消不补写
-        if message.is_some() && !streamed && !partial.is_empty() {
+        // 鼠标会话还没选位置，不往当前窗口里补写（文字已进历史）
+        if message.is_some() && !streamed && !partial.is_empty() && !self.mouse {
             if mode == Mode::Pick {
                 let text = partial.clone();
                 tauri::async_runtime::spawn(async move {
@@ -909,6 +929,7 @@ impl Ctl {
             *s.pick_counts.entry(ch).or_default() += 1;
         });
         let front = self.front.take();
+        let front = if self.mouse { pf::clicked_front().or(front) } else { front };
         self.cancel();
         tauri::async_runtime::spawn(async move {
             if let Some(f) = front {

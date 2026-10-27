@@ -86,6 +86,8 @@ pub struct Settings {
     pub tap_shortcut: Option<Shortcut>,
     /// 重新粘贴最近一条识别历史
     pub paste_shortcut: Option<Shortcut>,
+    /// 鼠标中键点按说话，结果先进候选框
+    pub middle_click: bool,
     pub silence: f64,
     /// 点按模式静音后自动结束；关闭后只能再点一次结束
     pub silence_stop: bool,
@@ -117,6 +119,7 @@ impl Default for Settings {
             hold_combo: None,
             tap_shortcut: Some(Shortcut { code: tap.0, mods: 0, name: tap.1.into() }),
             paste_shortcut: Some(Shortcut { code: paste.0, mods: paste.1, name: "V".into() }),
+            middle_click: true,
             silence: 1.5,
             silence_stop: true,
             streaming: true,

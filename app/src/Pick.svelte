@@ -82,7 +82,7 @@
 
 <!-- 紧凑面板：无标题栏/页脚/图标。选中行左侧是音量条（录音中）→ 转圈（定稿中）→ 序号（完成）；
      其余行只显示一行、变淡。快捷键照旧：1-N 选择、↑↓ 切换、↵ 上屏、Esc 取消。 -->
-<div class="pick" bind:this={root} style:--lines={lines}>
+<div class="pick" bind:this={root} style:--lines={lines} oncontextmenu={(e) => { e.preventDefault(); call("pick_key", { key: "Escape" }); }}>
   {#each model.rows as r, i (r.channel)}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -90,7 +90,7 @@
       class="row"
       class:active={i === model.sel}
       class:shake={i === shake}
-      title="{CH[r.channel].name}{r.ms != null ? ` · ${(r.ms / 1000).toFixed(2)}s` : ''} · {i + 1} 选择 · ↵ 上屏 · Esc 取消"
+      title="{CH[r.channel].name}{r.ms != null ? ` · ${(r.ms / 1000).toFixed(2)}s` : ''} · {i + 1} 选择 · ↵ 上屏 · Esc/右键 取消"
       onclick={() => call("pick_choose", { index: i })}
     >
       <span class="lead">

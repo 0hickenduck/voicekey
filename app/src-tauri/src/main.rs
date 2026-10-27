@@ -35,6 +35,7 @@ fn apply<R: Runtime>(app: &AppHandle<R>, s: &Settings) {
         c.set_hold(&s.hold_codes());
         c.tap = s.tap_shortcut.clone();
         c.paste = s.paste_shortcut.clone();
+        c.middle = s.middle_click;
     }
     ui::refresh_tray(app, s, st.hk.paused.load(Ordering::Relaxed));
     let al = app.autolaunch();
@@ -258,7 +259,8 @@ fn main() {
             app.manage(AppState { settings: Arc::new(RwLock::new(settings.clone())), hk: hk.clone(), tx: tx.clone(), qwen: qwen.clone() });
 
             let (htx, mut hrx) = mpsc::unbounded_channel();
-            hotkey::start(hk, htx);
+            hotkey::start(hk.clone(), htx.clone());
+            hotkey::start_mouse(hk, htx);
             tauri::async_runtime::spawn(async move {
                 while let Some(e) = hrx.recv().await {
                     let _ = tx.send(Msg::Hot(e));

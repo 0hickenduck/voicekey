@@ -356,6 +356,13 @@ pub fn secure_input() -> bool {
     unsafe { IsSecureEventInputEnabled() != 0 }
 }
 
+/// 鼠标中键：macOS 暂未实现
+pub fn start_middle_hook(_f: crate::MiddleFn) {}
+
+pub fn clicked_front() -> Option<FrontApp> {
+    None
+}
+
 pub fn front_app() -> Option<FrontApp> {
     use objc2_app_kit::NSWorkspace;
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;

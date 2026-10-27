@@ -12,6 +12,7 @@ Remote `fork` = https://github.com/0hickenduck/voicekey. Upstream is untouched; 
 | `bd20cfe` | Compact overlay: pick panel 400 px, no header/footer/logos/state dots, five-bar level meter (`app/src/lib/Bars.svelte`) in the selected row; HUD capsule 34 px. History records the language mix (`mix`, e.g. `zh+en`, languages with >= 15% share) |
 | `8b5695f` | Pick panel pinned to the bottom center of the screen the user is typing on (no longer follows the caret) |
 | (next) | Re-paste: the tray menu lists the last 3 history entries (click = copy); `pasteShortcut` (default Meh+V = Ctrl+Alt+Shift+V, settable on the 快捷键 page) pastes the latest entry once all modifiers are released. Needs history on |
+| (next) | Middle click (`middleClick`, default on; swallowed system-wide) = tap to dictate. Mouse sessions always open the pick panel, don't capture keys, and paste into the window the user last left-clicked before clicking a candidate (click-to-place). Right-click the panel cancels. Windows only (low-level mouse hook in `crates/platform/src/win.rs`) |
 
 ## Build and install
 

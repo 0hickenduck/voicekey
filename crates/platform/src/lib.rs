@@ -9,7 +9,7 @@ mod win;
 #[cfg(windows)]
 use win as imp;
 
-pub use imp::{caret, copy, front_app, inject_key, paste, secure_input, start_hook, FrontApp};
+pub use imp::{caret, clicked_front, copy, front_app, inject_key, paste, start_middle_hook, secure_input, start_hook, FrontApp};
 
 pub const CTRL: u8 = 1;
 pub const ALT: u8 = 2;
@@ -39,6 +39,9 @@ pub struct KeyEvent {
 
 /// 返回 true 表示吞掉该事件
 pub type HookFn = Box<dyn FnMut(&KeyEvent) -> bool + Send>;
+
+/// 鼠标中键按下（true）/松开（false）；返回 true 表示吞掉该事件
+pub type MiddleFn = Box<dyn FnMut(bool) -> bool + Send>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Special {

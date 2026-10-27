@@ -11,7 +11,7 @@ export type Channel = "doubao" | "wetype" | "qwen" | "baidu" | "sogou" | "iflyte
 export interface Shortcut { code: number; mods: number; name: string }
 export interface Combo { codes: number[]; name: string }
 export interface Settings {
-  channel: Channel; holdKey: string; holdCombo: Combo | null; tapShortcut: Shortcut | null; pasteShortcut: Shortcut | null; silence: number; silenceStop: boolean; streaming: boolean;
+  channel: Channel; holdKey: string; holdCombo: Combo | null; tapShortcut: Shortcut | null; pasteShortcut: Shortcut | null; middleClick: boolean; silence: number; silenceStop: boolean; streaming: boolean;
   liveText: boolean; mic: string; multi: Channel[]; lastPick: Channel | null; pickCounts: Partial<Record<Channel, number>>; history: boolean; autostart: boolean; theme: string; onboarded: boolean;
 }
 export interface HistoryEntry { ts: number; text: string; channel: Channel; lang: "zh" | "ja" | "en" | ""; mix?: string; alts?: { channel: Channel; text: string }[] }
