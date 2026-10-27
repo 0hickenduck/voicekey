@@ -334,6 +334,20 @@ impl Ctl {
                     crate::update_settings(&self.app, |s| s.tap_shortcut = Some(sc));
                 }
             }
+            HotEvent::RecordedPaste(sc) => {
+                let _ = self.app.emit_to("main", "recorded", sc.clone());
+                if let Some(sc) = sc {
+                    crate::update_settings(&self.app, |s| s.paste_shortcut = Some(sc));
+                }
+            }
+            HotEvent::PasteLast => {
+                if self.recording || self.mode != Mode::Idle {
+                    return;
+                }
+                if let Some(e) = history::list("", 1).pop() {
+                    tauri::async_runtime::spawn(async move { pf::paste(&e.text) });
+                }
+            }
             HotEvent::RecordedHold(c) => {
                 let _ = self.app.emit_to("main", "recorded", c.is_some());
                 if let Some(c) = c {
@@ -913,6 +927,7 @@ impl Ctl {
         let e = history::Entry::new(ch, text, alts);
         if history::append(&e).is_ok() {
             let _ = self.app.emit("history", &e);
+            ui::refresh_tray_now(&self.app);
         }
     }
 

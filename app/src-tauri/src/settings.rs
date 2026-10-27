@@ -84,6 +84,8 @@ pub struct Settings {
     pub hold_key: String,
     pub hold_combo: Option<Combo>,
     pub tap_shortcut: Option<Shortcut>,
+    /// 重新粘贴最近一条识别历史
+    pub paste_shortcut: Option<Shortcut>,
     pub silence: f64,
     /// 点按模式静音后自动结束；关闭后只能再点一次结束
     pub silence_stop: bool,
@@ -106,11 +108,14 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         let (hold, tap) = if cfg!(target_os = "macos") { ("rightAlt", (54, "右 ⌘")) } else { ("rightAlt", (0xA3, "右 Ctrl")) };
+        use voicekey_platform::{CTRL, META, SHIFT};
+        let paste = if cfg!(target_os = "macos") { (6, META | SHIFT) } else { (0x5A, CTRL | SHIFT) };
         Self {
             channel: Channel::Doubao,
             hold_key: hold.into(),
             hold_combo: None,
             tap_shortcut: Some(Shortcut { code: tap.0, mods: 0, name: tap.1.into() }),
+            paste_shortcut: Some(Shortcut { code: paste.0, mods: paste.1, name: "Z".into() }),
             silence: 1.5,
             silence_stop: true,
             streaming: true,

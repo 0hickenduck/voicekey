@@ -15,6 +15,8 @@ const TRAY_ACTIVE: &[u8] = include_bytes!("../icons/tray-active.png");
 const HUD_W: f64 = 680.0;
 const HUD_H: f64 = 120.0;
 const PICK_W: f64 = 400.0;
+/// 托盘里列出的最近识别条数
+pub const TRAY_HISTORY: usize = 3;
 
 static HUD_TOKEN: AtomicU64 = AtomicU64::new(0);
 /// 候选面板锚点（统一坐标空间：macOS 逻辑点 / Windows 物理像素）
@@ -264,6 +266,15 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>, s: &Settings, paused: bool) -> taur
         items.push(Box::new(CheckMenuItem::with_id(app, id, c.title(), true, s.channel == c, None::<&str>)?));
     }
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    let recent = if s.history { crate::history::list("", TRAY_HISTORY) } else { Vec::new() };
+    if !recent.is_empty() {
+        let paste = s.paste_shortcut.as_ref().map(|p| format!("，{} 粘贴第一条", p.title())).unwrap_or_default();
+        items.push(Box::new(MenuItem::with_id(app, "hist-head", format!("最近识别（点击复制{paste}）"), false, None::<&str>)?));
+        for e in recent {
+            items.push(Box::new(MenuItem::with_id(app, format!("hist:{}", e.ts), menu_snippet(&e.text), true, None::<&str>)?));
+        }
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
     items.push(Box::new(CheckMenuItem::with_id(app, "pause", "暂停监听", true, paused, None::<&str>)?));
     if let Some(v) = crate::update::available() {
         items.push(Box::new(MenuItem::with_id(app, "update", format!("更新到 v{v} 并重启"), true, None::<&str>)?));
@@ -275,6 +286,18 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>, s: &Settings, paused: bool) -> taur
     items.push(Box::new(MenuItem::with_id(app, "quit", "退出 VoiceKey", true, Some("CmdOrCtrl+Q"))?));
     let refs: Vec<&dyn IsMenuItem<R>> = items.iter().map(|b| b.as_ref()).collect();
     Menu::with_items(app, &refs)
+}
+
+/// 托盘菜单里的一行：合并空白，过长截断
+fn menu_snippet(text: &str) -> String {
+    const MAX: usize = 28;
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out: String = flat.chars().take(MAX).collect();
+    if flat.chars().count() > MAX {
+        out.push('…');
+    }
+    // Windows 菜单把 & 当作助记符
+    if cfg!(windows) { out.replace('&', "&&") } else { out }
 }
 
 fn tray_icon<R: Runtime>(app: &AppHandle<R>, active: bool) -> Option<Image<'static>> {
@@ -303,6 +326,13 @@ pub fn refresh_tray<R: Runtime>(app: &AppHandle<R>, s: &Settings, paused: bool) 
     if let (Some(t), Ok(m)) = (app.tray_by_id("main"), tray_menu(app, s, paused)) {
         let _ = t.set_menu(Some(m));
     }
+}
+
+/// 用当前设置和暂停状态重建托盘菜单（新识别写入历史后调用）
+pub fn refresh_tray_now<R: Runtime>(app: &AppHandle<R>) {
+    let st = app.state::<AppState>();
+    let s = st.settings.read().unwrap().clone();
+    refresh_tray(app, &s, st.hk.paused.load(Ordering::Relaxed));
 }
 
 pub fn set_tray_active<R: Runtime>(app: &AppHandle<R>, active: bool) {

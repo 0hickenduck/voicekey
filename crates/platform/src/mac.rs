@@ -197,6 +197,17 @@ pub(crate) fn type_text(text: &str) {
 pub fn inject_key(_code: u32, _down: bool) {}
 
 /// 借剪贴板 + ⌘V 上屏，随后恢复原剪贴板（保留所有类型）
+/// 只写入剪贴板，不粘贴
+pub fn copy(text: &str) {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+    unsafe {
+        let pb = NSPasteboard::generalPasteboard();
+        pb.clearContents();
+        pb.setString_forType(&NSString::from_str(text), NSPasteboardTypeString);
+    }
+}
+
 pub fn paste(text: &str) {
     use objc2::runtime::ProtocolObject;
     use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardTypeString, NSPasteboardWriting};

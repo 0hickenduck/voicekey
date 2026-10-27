@@ -29,9 +29,9 @@ jobs:
         with:
           key: x86_64-pc-windows-msvc
 
-      - name: Test history module
+      - name: Test history and hotkey modules
         working-directory: app/src-tauri
-        run: cargo test --target x86_64-pc-windows-msvc history
+        run: cargo test --target x86_64-pc-windows-msvc -- history hotkey
 
       - name: Build
         working-directory: app

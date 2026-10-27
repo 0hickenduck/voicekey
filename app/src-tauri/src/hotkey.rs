@@ -21,6 +21,9 @@ pub enum HotEvent {
     Pick(Special),
     Recorded(Option<Shortcut>),
     RecordedHold(Option<Combo>),
+    RecordedPaste(Option<Shortcut>),
+    /// 粘贴快捷键：等修饰键全部松开后发出，避免和模拟的 Ctrl+V 叠成别的组合
+    PasteLast,
 }
 
 #[derive(Default)]
@@ -29,6 +32,7 @@ pub struct Config {
     pub hold: u32,
     pub chord: Option<Chord>,
     pub tap: Option<Shortcut>,
+    pub paste: Option<Shortcut>,
 }
 
 /// 长按组合：若干修饰键（区分左右）+ 至多一个普通键
@@ -71,6 +75,8 @@ pub struct Shared {
     pub recording: AtomicBool,
     /// 录制目标是长按组合（否则为点按快捷键）
     pub record_hold: AtomicBool,
+    /// 录制目标是粘贴快捷键
+    pub record_paste: AtomicBool,
     /// 托盘「暂停监听」
     pub paused: AtomicBool,
 }
@@ -97,6 +103,8 @@ struct State {
     held_key: Option<u32>,
     chord_on: bool,
     chord_active: bool,
+    /// 粘贴快捷键已按下，等修饰键松开
+    paste_pending: bool,
 }
 
 pub fn start(shared: Arc<Shared>, tx: UnboundedSender<HotEvent>) {
@@ -120,6 +128,10 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
     }
     let cfg = sh.config.read().unwrap();
     let mut s = st.lock().unwrap();
+    if s.paste_pending && e.kind == KeyKind::Modifier(false) && e.mods & MOD_MASK == 0 {
+        s.paste_pending = false;
+        let _ = tx.send(HotEvent::PasteLast);
+    }
     if let Some(c) = cfg.chord.as_ref() {
         if chord(c, &mut s, st, tx, e) {
             return true;
@@ -129,6 +141,19 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
         KeyKind::Down => {
             if pf::special(e.code) == Some(Special::Escape) && !e.repeat {
                 let _ = tx.send(HotEvent::Escape);
+            }
+            if let Some(p) = cfg.paste.as_ref() {
+                if e.code == p.code && e.mods & MOD_MASK == p.mods {
+                    s.swallowed_code = Some(e.code);
+                    if !e.repeat {
+                        if p.mods == 0 {
+                            let _ = tx.send(HotEvent::PasteLast);
+                        } else {
+                            s.paste_pending = true;
+                        }
+                    }
+                    return true;
+                }
             }
             if let Some(t) = cfg.tap.as_ref().filter(|t| !t.is_modifier()) {
                 if e.code == t.code && e.mods & MOD_MASK == t.mods {
@@ -290,11 +315,12 @@ fn track(s: &mut State, e: &KeyEvent) {
     }
 }
 
-/// 录制下一次按键：单独点按一个修饰键，或按下 修饰键+键；Esc 取消
+/// 录制下一次按键：单独点按一个修饰键，或按下 修饰键+键；Esc 取消。粘贴快捷键不接受单个修饰键
 fn record(sh: &Shared, s: &mut State, tx: &UnboundedSender<HotEvent>, e: &KeyEvent) -> bool {
+    let paste = sh.record_paste.load(Ordering::Relaxed);
     let done = |sc: Option<Shortcut>| {
         sh.recording.store(false, Ordering::Relaxed);
-        let _ = tx.send(HotEvent::Recorded(sc));
+        let _ = tx.send(if paste { HotEvent::RecordedPaste(sc) } else { HotEvent::Recorded(sc) });
     };
     match e.kind {
         KeyKind::Down => {
@@ -314,7 +340,9 @@ fn record(sh: &Shared, s: &mut State, tx: &UnboundedSender<HotEvent>, e: &KeyEve
             }
         }
         KeyKind::Modifier(false) => {
-            if s.rec_pending == Some(e.code) {
+            if s.rec_pending == Some(e.code) && paste {
+                s.rec_pending = None;
+            } else if s.rec_pending == Some(e.code) {
                 s.rec_pending = None;
                 done(Some(Shortcut { code: e.code, mods: 0, name: pf::key_name(e) }));
             } else if e.mods & (MOD_MASK | pf::FN) == 0 {
@@ -416,6 +444,30 @@ mod tests {
         assert!(matches!(rx.try_recv(), Ok(HotEvent::LongPress)));
         step(ev(KeyKind::Modifier(false), alt, cflag));
         assert!(matches!(rx.try_recv(), Ok(HotEvent::Release)));
+    }
+
+    #[test]
+    fn paste_fires_after_modifiers_released() {
+        let (ctrl, shift, k) = (mod_code(pf::CTRL), mod_code(pf::SHIFT), plain_key());
+        let (cflag, sflag) = (pf::CTRL, pf::SHIFT);
+        let sh = Shared::default();
+        sh.config.write().unwrap().paste = Some(Shortcut { code: k, mods: cflag | sflag, name: "Z".into() });
+        let st = Arc::new(Mutex::new(State::default()));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let step = |e: KeyEvent| handle(&sh, &st, &tx, &e);
+        step(ev(KeyKind::Modifier(true), ctrl, cflag));
+        step(ev(KeyKind::Modifier(true), shift, cflag | sflag));
+        assert!(step(ev(KeyKind::Down, k, cflag | sflag)));
+        assert!(step(ev(KeyKind::Up, k, cflag | sflag)));
+        step(ev(KeyKind::Modifier(false), shift, cflag));
+        assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|e| matches!(e, HotEvent::PasteLast)));
+        step(ev(KeyKind::Modifier(false), ctrl, 0));
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|e| matches!(e, HotEvent::PasteLast)));
+        // 只按 Ctrl+Z 不触发
+        step(ev(KeyKind::Modifier(true), ctrl, cflag));
+        assert!(!step(ev(KeyKind::Down, k, cflag)));
+        step(ev(KeyKind::Modifier(false), ctrl, 0));
+        assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|e| matches!(e, HotEvent::PasteLast)));
     }
 
     #[test]

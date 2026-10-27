@@ -117,6 +117,13 @@ pub(crate) fn type_text(text: &str) {
 }
 
 /// 借剪贴板 + Ctrl+V 上屏，随后恢复原剪贴板（文本/图片）
+/// 只写入剪贴板，不粘贴
+pub fn copy(text: &str) {
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        let _ = cb.set_text(text);
+    }
+}
+
 pub fn paste(text: &str) {
     let Ok(mut cb) = arboard::Clipboard::new() else {
         type_text(text);

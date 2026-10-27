@@ -9,15 +9,17 @@
     (mac ? [[1, "⌃"], [2, "⌥"], [4, "⇧"], [8, "⌘"]] : [[1, "Ctrl+"], [2, "Alt+"], [4, "Shift+"], [8, "Win+"]])
       .filter(([b]) => m & (b as number)).map(([, n]) => n).join("");
   const tap = $derived(s.tapShortcut ? prefix(s.tapShortcut.mods) + s.tapShortcut.name : "未设置");
+  const paste = $derived(s.pasteShortcut ? prefix(s.pasteShortcut.mods) + s.pasteShortcut.name : "未设置");
 
-  let target = $state<"tap" | "hold">("tap");
-  const rec = (t: "tap" | "hold") => app.recording && target === t;
+  type Target = "tap" | "hold" | "paste";
+  let target = $state<Target>("tap");
+  const rec = (t: Target) => app.recording && target === t;
 
-  function record(t: "tap" | "hold") {
+  function record(t: Target) {
     const on = !rec(t);
     target = t;
     app.recording = on;
-    call("record_shortcut", { on, hold: t === "hold" });
+    call("record_shortcut", { on, hold: t === "hold", paste: t === "paste" });
   }
 </script>
 
@@ -61,6 +63,18 @@
     </div>
   </div>
 {/if}
+<h3>再次粘贴</h3>
+<div class="group">
+  <div class="row">
+    <div class="lbl">粘贴最近一条识别结果<small>{s.history ? "忘了粘贴或想再贴一次时用；托盘菜单里也能复制最近几条" : "需要先在「历史」页开启识别历史"}</small></div>
+    <div class="recrow paste">
+      <button class="rec" class:active={rec("paste")} onclick={() => record("paste")}>
+        {#if rec("paste")}请按下 修饰键+键…（Esc 取消）{:else}<span class="kbd mini">{paste}</span>点击后按下新的快捷键{/if}
+      </button>
+      {#if s.pasteShortcut && !rec("paste")}<button class="clear" title="关闭粘贴快捷键" onclick={() => save({ pasteShortcut: null })}>✕</button>{/if}
+    </div>
+  </div>
+</div>
 
 <style>
   .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -79,6 +93,7 @@
   .rec { flex: 1; display: flex; align-items: center; gap: 6px; border: 1.5px dashed var(--accent); border-radius: var(--rs); padding: 6px 10px; color: var(--fg2); cursor: pointer; background: none; text-align: left; }
   .rec.active { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
   .rec.hold { width: 100%; margin-top: 8px; font-size: 12px; }
+  .recrow.paste { width: 280px; }
   .clear { border: 0; background: none; color: var(--fg3); cursor: pointer; font-size: 13px; padding: 4px; }
   input[type="range"] { accent-color: var(--accent); width: 180px; }
   .val { width: 48px; }

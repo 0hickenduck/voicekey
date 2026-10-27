@@ -34,6 +34,7 @@ fn apply<R: Runtime>(app: &AppHandle<R>, s: &Settings) {
         let mut c = st.hk.config.write().unwrap();
         c.set_hold(&s.hold_codes());
         c.tap = s.tap_shortcut.clone();
+        c.paste = s.paste_shortcut.clone();
     }
     ui::refresh_tray(app, s, st.hk.paused.load(Ordering::Relaxed));
     let al = app.autolaunch();
@@ -84,6 +85,12 @@ pub fn tray_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
             st.hk.paused.store(p, Ordering::Relaxed);
             let s = st.settings.read().unwrap().clone();
             ui::refresh_tray(app, &s, p);
+        }
+        _ if id.starts_with("hist:") => {
+            let ts = id["hist:".len()..].parse::<u64>().ok();
+            if let Some(e) = history::list("", ui::TRAY_HISTORY).into_iter().find(|e| Some(e.ts) == ts) {
+                pf::copy(&e.text);
+            }
         }
         _ => {
             if let Some(ch) = id.strip_prefix("ch:").and_then(|c| serde_json::from_value::<Channel>(json!(c)).ok()) {
@@ -162,9 +169,10 @@ fn microphones() -> Vec<String> {
 }
 
 #[tauri::command]
-fn record_shortcut(app: AppHandle, on: bool, hold: Option<bool>) {
+fn record_shortcut(app: AppHandle, on: bool, hold: Option<bool>, paste: Option<bool>) {
     let hk = &app.state::<AppState>().hk;
     hk.record_hold.store(hold.unwrap_or(false), Ordering::Relaxed);
+    hk.record_paste.store(paste.unwrap_or(false), Ordering::Relaxed);
     hk.recording.store(on, Ordering::Relaxed);
 }
 
