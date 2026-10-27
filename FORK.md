@@ -11,7 +11,7 @@ Remote `fork` = https://github.com/0hickenduck/voicekey. Upstream is untouched; 
 | `7d74258` | `.github/workflows/build-windows.yml`: unsigned Windows build on every push to `history` (the upstream Release workflow needs the author's updater signing key) |
 | `bd20cfe` | Compact overlay: pick panel 400 px, no header/footer/logos/state dots, five-bar level meter (`app/src/lib/Bars.svelte`) in the selected row; HUD capsule 34 px. History records the language mix (`mix`, e.g. `zh+en`, languages with >= 15% share) |
 | `8b5695f` | Pick panel pinned to the bottom center of the screen the user is typing on (no longer follows the caret) |
-| (next) | Re-paste: the tray menu lists the last 3 history entries (click = copy); `pasteShortcut` (default Ctrl+Shift+Z, settable on the 快捷键 page) pastes the latest entry once all modifiers are released. Needs history on |
+| (next) | Re-paste: the tray menu lists the last 3 history entries (click = copy); `pasteShortcut` (default Meh+V = Ctrl+Alt+Shift+V, settable on the 快捷键 page) pastes the latest entry once all modifiers are released. Needs history on |
 
 ## Build and install
 

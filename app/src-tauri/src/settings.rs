@@ -108,14 +108,15 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         let (hold, tap) = if cfg!(target_os = "macos") { ("rightAlt", (54, "右 ⌘")) } else { ("rightAlt", (0xA3, "右 Ctrl")) };
-        use voicekey_platform::{CTRL, META, SHIFT};
-        let paste = if cfg!(target_os = "macos") { (6, META | SHIFT) } else { (0x5A, CTRL | SHIFT) };
+        // Meh（Ctrl+Alt+Shift）+ V
+        use voicekey_platform::{ALT, CTRL, SHIFT};
+        let paste = (if cfg!(target_os = "macos") { 9 } else { 0x56 }, CTRL | ALT | SHIFT);
         Self {
             channel: Channel::Doubao,
             hold_key: hold.into(),
             hold_combo: None,
             tap_shortcut: Some(Shortcut { code: tap.0, mods: 0, name: tap.1.into() }),
-            paste_shortcut: Some(Shortcut { code: paste.0, mods: paste.1, name: "Z".into() }),
+            paste_shortcut: Some(Shortcut { code: paste.0, mods: paste.1, name: "V".into() }),
             silence: 1.5,
             silence_stop: true,
             streaming: true,

@@ -8,6 +8,8 @@ use voicekey_platform::{self as pf, KeyEvent, KeyKind, Special};
 
 const THRESHOLD: Duration = Duration::from_millis(300);
 const MOD_MASK: u8 = pf::CTRL | pf::ALT | pf::SHIFT | pf::META;
+/// Windows 未分配的虚拟键，用来打断 Alt/Win 单独松开
+const MENU_MASK: u32 = 0xE8;
 
 #[derive(Debug, Clone)]
 pub enum HotEvent {
@@ -146,6 +148,11 @@ fn handle(sh: &Shared, st: &Arc<Mutex<State>>, tx: &UnboundedSender<HotEvent>, e
                 if e.code == p.code && e.mods & MOD_MASK == p.mods {
                     s.swallowed_code = Some(e.code);
                     if !e.repeat {
+                        // 吞掉的键里含 Alt/Win 时，单独松开它会激活菜单栏/开始菜单；补一个无意义按键打断
+                        if cfg!(windows) && p.mods & (pf::ALT | pf::META) != 0 {
+                            pf::inject_key(MENU_MASK, true);
+                            pf::inject_key(MENU_MASK, false);
+                        }
                         if p.mods == 0 {
                             let _ = tx.send(HotEvent::PasteLast);
                         } else {
